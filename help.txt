@@ -1,0 +1,2 @@
+to create demo data
+sh -c '/root/devtools dev-reset-install-demodata'
