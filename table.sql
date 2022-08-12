@@ -1,9 +1,14 @@
 -- This table definition is loaded and then executed when the OpenEMR interface's install button is clicked.
-CREATE TABLE IF NOT EXISTS `mod_custom_skeleton_records`(
+CREATE TABLE IF NOT EXISTS `mod_claimrev_eligibility`(
     `id` INT(11)  PRIMARY KEY AUTO_INCREMENT NOT NULL
-    ,`name` VARCHAR(255) NOT NULL
+    ,`pid` bigint(20)
+    ,`payer_responsibility` varchar(2)
+    ,`request_json` JSON NULL
+    ,`response_json` JSON NULL
+    ,`status` varchar(25)
+    ,`last_checked` datetime
+    ,`create_date` datetime
 );
-
 -- Add the background service for sending claims
 #IfNotRow background_services name ClaimRev_Send
 INSERT INTO `background_services` (`name`, `title`, `active`, `running`, `next_run`, `execute_interval`, `function`, `require_once`, `sort_order`) VALUES

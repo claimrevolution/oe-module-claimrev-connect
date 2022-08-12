@@ -1,2 +1,12 @@
 to create demo data
 sh -c '/root/devtools dev-reset-install-demodata'
+
+
+
+eligibility statuses
+waiting -> waiting to Send
+in-progress -> sent
+error -> something went wrong
+complete -> fished with final results
+
+so we can delete if waiting or error,and complete if aged out.

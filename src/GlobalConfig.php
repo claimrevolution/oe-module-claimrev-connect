@@ -26,14 +26,18 @@ class GlobalConfig
     const CONFIG_OPTION_CLIENTID = 'oe_claimrev_config_clientid';
     const CONFIG_OPTION_CLIENTSECRET = 'oe_claimrev_config_clientsecret';
     const CONFIG_AUTO_SEND_CLAIM_FILES = 'oe_claimrev_config_auto_send_claim_files';
+    const CONFIG_ENABLE_MENU = "oe_claimrev_config_add_menu_button";
+    const CONFIG_SERVICE_TYPE_CODES = "oe_claimrev_config_service_type_codes";
+    const CONFIG_ENABLE_ELIGIBILITY_CARD = "oe_claimrev_config_add_eligibility_card";
+    const CONFIG_USE_FACILITY_FOR_ELIGIBILITY = "oe_claimrev_config_use_facility_for_eligibility";
+    const CONFIG_ENABLE_REALTIME_ELIGIBILITY = "oe_claimrev_enable_rte";
+    const CONFIG_ENABLE_RESULTS_ELIGIBILITY = "oe_claimrev_eligibility_results_age";
 
-
-    const CONFIG_OPTION_TEXT = 'oe_skeleton_config_option_text';
-    const CONFIG_OPTION_ENCRYPTED = 'oe_skeleton_config_option_encrypted';
-    const CONFIG_OVERRIDE_TEMPLATES = "oe_skeleton_override_twig_templates";
-    const CONFIG_ENABLE_MENU = "oe_skeleton_add_menu_button";
-    const CONFIG_ENABLE_BODY_FOOTER = "oe_skeleton_add_body_footer";
-    const CONFIG_ENABLE_FHIR_API = "oe_skeleton_enable_fhir_api";
+    // const CONFIG_OPTION_TEXT = 'oe_skeleton_config_option_text';
+    // const CONFIG_OPTION_ENCRYPTED = 'oe_skeleton_config_option_encrypted';
+    // const CONFIG_OVERRIDE_TEMPLATES = "oe_skeleton_override_twig_templates";
+    // const CONFIG_ENABLE_BODY_FOOTER = "oe_skeleton_add_body_footer";
+    // const CONFIG_ENABLE_FHIR_API = "oe_skeleton_enable_fhir_api";
 
     private $globalsArray;
 
@@ -139,6 +143,12 @@ class GlobalConfig
                 ,'type' => GlobalSetting::DATA_TYPE_ENCRYPTED
                 ,'default' => ''
             ]
+            ,self::CONFIG_SERVICE_TYPE_CODES => [
+                'title' => 'Eligibility Service Type Codes'
+                ,'description' => 'Comma Separated List of Service Type Codes'
+                ,'type' => GlobalSetting::DATA_TYPE_TEXT
+                ,'default' => ''
+            ]
             ,self::CONFIG_AUTO_SEND_CLAIM_FILES => [
                 'title' => 'Auto Send Claim Files'
                 ,'description' => 'Send Claim Files to ClaimRev automatically'
@@ -152,8 +162,31 @@ class GlobalConfig
                 ,'type' => GlobalSetting::DATA_TYPE_BOOL
                 ,'default' => ''
             ]
-         
-        ];
+            ,self::CONFIG_ENABLE_ELIGIBILITY_CARD => [
+                'title' => 'Add ClaimRev Eligibility Card To Patient Dashboard'
+                ,'description' => 'Adds the ClaimRev Eligibility Card To Patient Dashboard'
+                ,'type' => GlobalSetting::DATA_TYPE_BOOL
+                ,'default' => ''
+            ]
+            ,self::CONFIG_USE_FACILITY_FOR_ELIGIBILITY => [
+                'title' => 'Use Facility for Eligibility'
+                ,'description' => 'Information requester will be facility rather than provider'
+                ,'type' => GlobalSetting::DATA_TYPE_BOOL
+                ,'default' => ''
+            ]
+            ,self::CONFIG_ENABLE_REALTIME_ELIGIBILITY => [
+                'title' => 'Turn on Real-Time Eligibility'
+                ,'description' => 'Enables eligibility checks on patients eligibility when an appointment is created'
+                ,'type' => GlobalSetting::DATA_TYPE_BOOL
+                ,'default' => ''
+            ]
+            ,self::CONFIG_ENABLE_RESULTS_ELIGIBILITY => [
+                'title' => 'Eligibility Age To Stale'
+                ,'description' => 'THis is the number of days to consider eligibility stale'
+                ,'type' => GlobalSetting::DATA_TYPE_TEXT
+                ,'default' => ''
+            ]
+        ];//
         return $settings;
     }
 }
