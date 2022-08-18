@@ -16,6 +16,7 @@
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
+require_once($GLOBALS["srcdir"] . "/options.inc.php");
 /**
  * Note the below use statements are importing classes from the OpenEMR core codebase
  */
@@ -30,6 +31,10 @@ use OpenEMR\Events\RestApiExtend\RestApiScopeEvent;
 use OpenEMR\Services\Globals\GlobalSetting;
 use OpenEMR\Menu\MenuEvent;
 use OpenEMR\Events\RestApiExtend\RestApiCreateEvent;
+use OpenEMR\Events\PatientDemographics\RenderEvent as pRenderEvent;
+use OpenEMR\Events\Appointments\AppointmentSetEvent;
+
+use OpenEMR\Modules\ClaimRevConnector\ClaimRevRteService;
 
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Twig\Error\LoaderError;
@@ -96,8 +101,11 @@ class Bootstrap
             $this->registerMenuItems();
             $this->registerTemplateEvents();
             $this->subscribeToApiEvents();
+            $this->registerDemographicsEvents();
+            $this->registerEligibilityEvents();
         }
     }
+
 
     /**
      * @return GlobalConfig
@@ -138,12 +146,70 @@ class Bootstrap
         }
     }
 
+    
+    public function registerDemographicsEvents()
+    {
+        if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_ELIGIBILITY_CARD))
+        {
+            $this->eventDispatcher->addListener(pRenderEvent::EVENT_SECTION_LIST_RENDER_AFTER, [$this, 'renderEligibilitySection']);
+        }        
+    }
+
+    public function registerEligibilityEvents()
+    {
+        if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_REALTIME_ELIGIBILITY))
+        {
+            $this->eventDispatcher->addListener(AppointmentSetEvent::EVENT_HANDLE, [$this, 'renderAppointmentSetEvent']);
+        }
+    }
+    public function renderAppointmentSetEvent(AppointmentSetEvent $event)
+    {
+        ClaimRevRteService::CreateEligibilityFromAppointment($event->eid);      
+
+    }
+    public function renderEligibilitySection(pRenderEvent $event)
+    {
+        $pid = $event->getPid();
+        ?>
+        <section>
+        <?php
+        // Billing expand collapse widget
+        $widgetTitle = xl("ClaimRev Eligibility");
+        $widgetLabel = "clmrevelig";
+        $widgetButtonLabel = xl("Edit");
+        $widgetButtonLink = ""; // "return newEvt();";
+        $widgetButtonClass = "";
+        $linkMethod = "html";
+        $bodyClass = "notab";
+        $widgetAuth = false;
+        $fixedWidth = false;
+        $forceExpandAlways = false;
+         
+        
+        expand_collapse_widget(
+            $widgetTitle,
+            $widgetLabel,
+            $widgetButtonLabel,
+            $widgetButtonLink,
+            $widgetButtonClass,
+            $linkMethod,
+            $bodyClass,
+            $widgetAuth,
+            $fixedWidth,
+            $forceExpandAlways
+        );
+        ?>
+        
+        <div> <?php include("eligibility.php");;?> </div>
+    </section>
+    <?php
+    }
     /**
      * We tie into any events dealing with the templates / page rendering of the system here
      */
     public function registerTemplateEvents()
     {
-        
+        $this->eventDispatcher->addListener(TwigEnvironmentEvent::EVENT_CREATED, [$this, 'addTemplateOverrideLoader']);
     }
 
     /**
@@ -152,10 +218,7 @@ class Bootstrap
      */
     public function renderMainBodyScripts(RenderEvent $event)
     {
-        ?>
-        <link rel="stylesheet" href="<?php echo $this->getAssetPath();?>css/skeleton-module.css">
-        <script src="<?php echo $this->getAssetPath();?>js/skeleton-module.js"></script>
-        <?php
+        
     }
 
     /**
@@ -163,6 +226,7 @@ class Bootstrap
      */
     public function addTemplateOverrideLoader(TwigEnvironmentEvent $event)
     {
+        
         try {
             $twig = $event->getTwigEnvironment();
             if ($twig === $this->twig) {

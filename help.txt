@@ -1,2 +1,23 @@
 to create demo data
 sh -c '/root/devtools dev-reset-install-demodata'
+
+docker-compose up
+docker commit development-easy_mysql_1
+docker-compose down
+
+check for php errors
+sh -c '/root/devtools php-log'
+
+adding demo data
+sh -c '/root/devtools dev-reset-install-demodata'
+
+ngrok http https://0.0.0.0:44302
+
+
+eligibility statuses
+waiting -> waiting to Send
+in-progress -> sent
+error -> something went wrong
+complete -> fished with final results
+
+so we can delete if waiting or error,and complete if aged out.
