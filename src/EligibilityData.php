@@ -26,14 +26,60 @@
             $sqlarr = array($pid,$payer_responsibility);
             $result = sqlStatement($sql,$sqlarr);            
         }
+        public static function getEligibilityCheckByStatus($status)
+        {
+            $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ?";
+            $sqlarr = array($status);
+
+            $result = sqlStatement($sql,$sqlarr);   
+            return $result; 
+        }
+        public static function getEligibilityResults($status, $minutes)
+        {
+            $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ? AND TIMESTAMPDIFF(MINUTE,last_checked,NOW()) >= ?";
+            $sqlarr = array($status,$minutes);            
+            $result = sqlStatement($sql,$sqlarr); 
+            return $result; 
+        }
         public static function getEligibilityResult($pid,$payer_responsibility)
         {
             $pr = ValueMapping::MapPayerResponsibility($payer_responsibility);
             $sql = "SELECT status, coalesce(last_checked,create_date) as last_update,response_json FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? LIMIT 1";
-            error_log($pr);
+          
             $res = sqlStatement($sql, array($pid,$pr));   
             return $res;
         }
+
+        public static function updateEligibilityRecord($id, $status,$request_json, $response_json, $updateLastChecked, $responseMessage)
+        {
+            $sql = "UPDATE mod_claimrev_eligibility SET status = ? ";
+
+            if($updateLastChecked)
+            {
+                $sql = $sql . ",last_checked = NOW() ";
+            }
+            if($response_json != null)
+            {
+                $sql = $sql . " ,response_json = '" . $response_json . "'";
+            }      
+            if($request_json != null)
+            {
+                $sql = $sql . " ,request_json = '" . $request_json . "'";
+            }             
+            if($responseMessage != null)
+            {
+                $sql = $sql . " ,response_message = '" . $responseMessage . "'";
+            } 
+
+            $sql = $sql . " WHERE id = ?";
+
+            $sqlarr = array($status,$id);
+            sqlStatement($sql,$sqlarr);
+
+        }
+
+
+
         public static function getInsuranceData($pid=0,$pr = "")
         {
             $query = "SELECT

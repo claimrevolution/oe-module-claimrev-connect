@@ -32,6 +32,7 @@ class GlobalConfig
     const CONFIG_USE_FACILITY_FOR_ELIGIBILITY = "oe_claimrev_config_use_facility_for_eligibility";
     const CONFIG_ENABLE_REALTIME_ELIGIBILITY = "oe_claimrev_enable_rte";
     const CONFIG_ENABLE_RESULTS_ELIGIBILITY = "oe_claimrev_eligibility_results_age";
+    const CONFIG_ENABLE_AUTO_SEND_ELIGIBILITY = "oe_claimrev_send_eligibility";
 
     // const CONFIG_OPTION_TEXT = 'oe_skeleton_config_option_text';
     // const CONFIG_OPTION_ENCRYPTED = 'oe_skeleton_config_option_encrypted';
@@ -184,6 +185,12 @@ class GlobalConfig
                 'title' => 'Eligibility Age To Stale'
                 ,'description' => 'THis is the number of days to consider eligibility stale'
                 ,'type' => GlobalSetting::DATA_TYPE_TEXT
+                ,'default' => ''
+            ]
+            ,self::CONFIG_ENABLE_AUTO_SEND_ELIGIBILITY => [
+                'title' => 'Turn on Eligibility Send Service'
+                ,'description' => 'Enables the sending of eligibility json to ClaimRev'
+                ,'type' => GlobalSetting::DATA_TYPE_BOOL
                 ,'default' => ''
             ]
         ];//
