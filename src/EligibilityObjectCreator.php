@@ -34,13 +34,14 @@ class EligibilityObjectCreator
             $patient->middleName = $row['mname'];           
             $patient->dateOfBirth = $row['dob'];
             $patient->gender = $row['sex'];
+            $patient->memberId = $row['policy_number'];
 
             $provider = new InformationReceiver();
             if($useFacility)
             {
                 $provider->receiverType = "FA";
                 $provider->firstName = "";
-                $provider->lastName = $row['facility_name'];
+                $provider->groupName = $row['facility_name'];
                 $provider->providerNpi = $row['facility_npi'];
             }
             else 
@@ -49,6 +50,7 @@ class EligibilityObjectCreator
                 $provider->firstName = $row['provider_fname'];
                 $provider->lastName = $row['provider_lname'];
                 $provider->providerNpi = $row['provider_npi'];
+                $provider->signature = $row['provider_lname'] + ", " $row['provider_fname'];
             }
 
 
