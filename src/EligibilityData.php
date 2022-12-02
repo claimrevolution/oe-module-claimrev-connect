@@ -50,7 +50,7 @@
             return $res;
         }
 
-        public static function updateEligibilityRecord($id, $status,$request_json, $response_json, $updateLastChecked, $responseMessage)
+        public static function updateEligibilityRecord($id, $status,$request_json, $response_json, $updateLastChecked, $responseMessage,$raw271)
         {
             $sql = "UPDATE mod_claimrev_eligibility SET status = ? ";
 
@@ -70,7 +70,10 @@
             {
                 $sql = $sql . " ,response_message = '" . $responseMessage . "'";
             } 
-
+  	    if($raw271 != null)
+            {
+                $sql = $sql . " ,raw271 = '" . $raw271 . "'";
+            } 
             $sql = $sql . " WHERE id = ?";
 
             $sqlarr = array($status,$id);
