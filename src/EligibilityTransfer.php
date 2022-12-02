@@ -62,7 +62,7 @@
                 return;
             }     
             $responseMessage = $result->responseMessage;
-
+            $raw271 = $result->raw271;
             if($result->retryLater)
             {
                 EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_RETRY,null,null,true,$responseMessage);
