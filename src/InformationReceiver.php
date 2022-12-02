@@ -4,7 +4,7 @@
     {
 
         public $receiverType;//
-        public $groupName
+        public $groupName;
         public $firstName;//
         public $lastName;//
         public $middleName;//
