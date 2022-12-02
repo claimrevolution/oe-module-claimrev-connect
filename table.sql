@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `mod_claimrev_eligibility`(
     ,`status` varchar(25)
     ,`last_checked` datetime
     ,`create_date` datetime
+    ,`raw271` MEDIUMTEXT
 );
 -- Add the background service for sending claims
 #IfNotRow background_services name ClaimRev_Send
