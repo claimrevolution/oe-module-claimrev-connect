@@ -53,30 +53,80 @@
         {
             if(false === $result)
             {
-                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,null,true,null);
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,null,true,'no results',null,null,null);
                 return;
-            }               
+            }   
+            $payload = json_encode($result, JSON_UNESCAPED_SLASHES); 
+
             if (!property_exists($result, 'responseMessage')) 
             {
-                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,null,true,null);
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,$payload,true,'missing responseMessage Property',null,null,null);
                 return;
-            }     
-            $responseMessage = $result->responseMessage;
-            $raw271 = $result->raw271;
+            }    
+            if (!property_exists($result, 'mappedData')) 
+            {
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,$payload,true,' missing MappedData Property',null,null,null);
+                return;
+            }   
+
+            $responseMessage = $result->responseMessage;          
+            $mappedData = $result->mappedData;
+            if (!property_exists($mappedData, 'individuals')) 
+            {
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,$payload,true, $responseMessage . ' missing individuals Property',null,null,null);
+                return;
+            }    
+
+            $individuals = $mappedData->individuals;
+            $individual = $individuals[ array_key_first($individuals) ];
+            if($individual === null)
+            {
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,$payload,true, $responseMessage . ' missing individual Property',null,null,null);
+                return;
+            }
+
+
+            if (!property_exists($individual, 'eligibility')) 
+            {
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,$payload,true, $responseMessage . ' missing eligibility Property',null,null,null);
+                return;
+            }    
+            
+            $eligibilities = $individual->eligibility;
+            $eligibility = $eligibilities[ array_key_first($eligibilities) ];
+            
+            $raw271 = null;
+            if (property_exists($eligibility, 'raw271')) 
+            {
+                $raw271 = $eligibility->raw271;
+                $siteDir = $GLOBALS['OE_SITE_DIR'];
+                $reportFolder = "f271";
+                $savePath = $siteDir . '/documents/edi/history/' . $reportFolder . '/';
+                if (!file_exists($savePath)) {
+  
+                    // Create a direcotry
+                    mkdir($savePath, 0777, true);
+                }
+
+                $fileText = $raw271;
+                $fileName = $result->claimRevResultId;
+                $filePathName =  $savePath . $fileName . '.txt';
+                file_put_contents($filePathName,$fileText);
+                chmod($filePathName, 0777);
+            }    
+            
             if($result->retryLater)
             {
-                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_RETRY,null,null,true,$responseMessage);
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_RETRY,null,$payload,true,$responseMessage,null,null,null);
                 return;
             }
-            
-            if($result->eligibilityResponse == null)
-            {
-                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_RETRY,null,null,true,$responseMessage);
-                return;
-            }
+
          
-            $payload = json_encode($result->eligibilityResponse, JSON_UNESCAPED_SLASHES); 
-            EligibilityData::updateEligibilityRecord($eid, self::STATUS_SUCCESS,null,$payload,true,$responseMessage);
+            $payload = json_encode($result, JSON_UNESCAPED_SLASHES); 
+            $eligibility_json = json_encode($eligibility, JSON_UNESCAPED_SLASHES); 
+            $individual_json = json_encode($individual, JSON_UNESCAPED_SLASHES);
+
+            EligibilityData::updateEligibilityRecord($eid, self::STATUS_SUCCESS,null,$payload,true,$responseMessage,$raw271,$eligibility_json,$individual_json);
 
         }
     }

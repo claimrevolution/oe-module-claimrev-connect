@@ -11,10 +11,15 @@ class ClaimRevRteService
 
     public static function CreateEligibilityFromAppointment($eid)
     {
-        $pid = EligibilityData::GetPatientIdFromAppointment($eid);
-        if($pid != null)
+        $row = EligibilityData::GetPatientIdFromAppointment($eid);
+        if($row != null)
         {
-            $requestObjects = EligibilityObjectCreator::BuildObject($pid,"");
+            $pid = $row["pc_pid"];
+            $appointmentDate = $row["appointmentDate"];
+            $facilityId = $row["facilityId"];
+            $providerId = $row["providerId"];
+
+            $requestObjects = EligibilityObjectCreator::BuildObject($pid,"",$appointmentDate, $facilityId, $providerId);
             EligibilityObjectCreator::SaveToDatabase($requestObjects,$pid );           
         }
     }

@@ -5,70 +5,128 @@ use OpenEMR\Modules\ClaimRevConnector\EligibilityData;
 use OpenEMR\Modules\ClaimRevConnector\EligibilityInquiryRequest;
 use OpenEMR\Modules\ClaimRevConnector\InformationReceiver;
 use OpenEMR\Modules\ClaimRevConnector\SubscriberPatientEligibilityRequest;
+use OpenEMR\Modules\ClaimRevConnector\RevenueToolsRequest;
+use OpenEMR\Modules\ClaimRevConnector\RevenueToolsPayer;
 
 class EligibilityObjectCreator
 {
     
-    public static function BuildObject($pid,$pr)
+    public static function BuildRevenueToolsRequest($pid,$pr, $eventDate=null,$providerId=null,$facilityId=null)
     {
+        $facilityName = "";
+        $facilityState = "";
+        $facilityNpi = "";
+        $providerNpi = "";
+        $providerPinCode = "";
+
         $useFacility = $GLOBALS['oe_claimrev_config_use_facility_for_eligibility'];
         $serviceTypeCodes = $GLOBALS['oe_claimrev_config_service_type_codes'];
-        $objects = array();
+        $accountNumber = "";
+        $productsToRun = array(1);
 
-        $res = EligibilityData::getInsuranceData($pid,$pr);
-        foreach ($res as $row)
+
+        $revenueTools = new RevenueToolsRequest();
+        $revenueTools->requestingSoftware = "openEmr ClaimRev Connect";
+        $revenueTools->accountNumber = $accountNumber;
+        $revenueTools->payerResponsibility = $pr;
+        $revenueTools->includeCredit = false;
+        $revenueTools->serviceTypeCodes = explode(",",$serviceTypeCodes);
+        $revenueTools->productsToRun = $productsToRun;
+
+
+        if($eventDate == null)
         {
-            $subscriber = new SubscriberPatientEligibilityRequest();
-            $subscriber->firstName = $row['subscriber_fname'];
-            $subscriber->lastName = $row['subscriber_lname'];
-            $subscriber->middleName = $row['subscriber_mname'];
-            $subscriber->memberId = $row['policy_number'];
-            $subscriber->dateOfBirth = $row['subscriber_dob'];
-            $subscriber->gender = $row['subscriber_sex'];
-
-           
-
-            $patient = new SubscriberPatientEligibilityRequest();
-            $patient->firstName = $row['fname'];
-            $patient->lastName = $row['lname'];
-            $patient->middleName = $row['mname'];           
-            $patient->dateOfBirth = $row['dob'];
-            $patient->gender = $row['sex'];
-            $patient->memberId = $row['policy_number'];
-
-            $provider = new InformationReceiver();
-            if($useFacility)
-            {
-                $provider->receiverType = "FA";
-                $provider->firstName = "";
-                $provider->groupName = $row['facility_name'];
-                $provider->providerNpi = $row['facility_npi'];
-            }
-            else 
-            {
-                $provider->receiverType = "1P";
-                $provider->firstName = $row['provider_fname'];
-                $provider->lastName = $row['provider_lname'];
-                $provider->providerNpi = $row['provider_npi'];
-                $provider->signature = $row['provider_lname'] + ", " $row['provider_fname'];
-            }
-
-
-
-            $request = new EligibilityInquiryRequest($subscriber,$patient,$row['subscriber_relationship'],$row['payer_responsibility']);    
-            $request->payerNumber = $row['payerId'];
-            $request->payerName = $row['payer_name'];
-            $request->provider = $provider;
-            $request->industryCode = $row['pos_code'];
-            $request->serviceTypeCodes = explode(",",$serviceTypeCodes);
-
-            array_push($objects,$request);
+            $revenueTools->serviceBeginDate = date("Y-m-d");
+            $revenueTools->serviceEndDate = date("Y-m-d");
         }
-        return $objects;
+        else
+        {
+            $revenueTools->serviceBeginDate = $eventDate;
+            $revenueTools->serviceEndDate = $eventDate;
+        }
+        
+        //only 1 will come back here
+        $patientData = EligibilityData::getPatientData($pid);
+
+        if($patientData != null)
+        {
+            if($facilityId == null)
+            {
+                $facilityId = $patientData['facility_id'];
+            }
+            if($providerId == null || $providerId <1)
+            {
+                $providerId = $patientData['providerID'];
+            }
+
+            $facilityData = EligibilityData::getFacilityData($facilityId);
+            $providerData = EligibilityData::getProviderData($providerId);
+           
+            if( $facilityData != null)
+            {
+                $facilityName = $facilityData['facility_name'];
+                $facilityState = $facilityData['facility_state'];
+                $facilityNpi = $facilityData['facility_npi'];
+            }
+
+            if( $providerData != null)
+            {
+                $providerPinCode = $providerData['provider_pin'];
+                $providerNpi = $providerData['provider_npi'];              
+            }
+
+            $revenueTools->practiceName = $facilityName;
+            $revenueTools->practiceState = $facilityState;
+            $revenueTools->npi = $facilityNpi;  
+            
+            if($useFacility==false)
+            {
+                $revenueTools->npi = $providerNpi;                
+            }
+
+            $revenueTools->patientFirstName = $patientData['fname'];
+            $revenueTools->patientLastName = $patientData['lname'];
+            $revenueTools->patientGender = $patientData['sex'];
+            $revenueTools->patientDob = $patientData['dob'];
+            $revenueTools->patientSsn = $patientData['ss'];
+            $revenueTools->patientAddress1 = $patientData['street'];
+            $revenueTools->patientCity = $patientData['city'];
+            $revenueTools->patientState = $patientData['state'];
+            $revenueTools->patientZip = $patientData['postal_code'];
+            $revenueTools->patientEmailAddress = $patientData['ss'];
+
+            $revenueTools->pinCode = $providerPinCode;
+        }
+        return $revenueTools;
+
     }
+    public static function BuildObject($pid,$payer_responsibility,$eventDate=null, $facilityId=null, $providerId=null)
+    {
+        $results = array();        
+        $resultSubscribers = EligibilityData::getSubscriberData($pid,$payer_responsibility);
+        foreach ($resultSubscribers as $subscriberRow)
+        {
+            $payers = array();
+            $pr = ValueMapping::MapPayerResponsibility($subscriberRow['type']);
+            $revenueTools = EligibilityObjectCreator::BuildRevenueToolsRequest($pid,$pr,$eventDate,$providerId,$facilityId);
+            $payer = new RevenueToolsPayer();
+            $payer->payerNumber = $subscriberRow['payerId'];
+            $payer->payerName = $subscriberRow['payer_name'];
+            $payer->subscriberNumber = $subscriberRow['policy_number'];
+            $revenueTools->subscriberFirstName = $subscriberRow['subscriber_fname'];
+            $revenueTools->subscriberLastName = $subscriberRow['subscriber_fname'];
+            $revenueTools->subscriberDob = $subscriberRow['subscriber_dob'];
+            array_push($payers,$payer);
+            $revenueTools->payers = $payers;
+        }
+        array_push($results,$revenueTools);   
+
+        return $results;     
+    }
+    
     public static function SaveSingleToDatabase($req,$pid)
     {
-        
+      
         $stale_age = $GLOBALS['oe_claimrev_eligibility_results_age'];
         //status of re-check if results are still waiting on claimrev site
 
@@ -84,16 +142,17 @@ class EligibilityObjectCreator
         {
             $status = "creating";
             $sql = "INSERT INTO mod_claimrev_eligibility (pid,payer_responsibility,status,create_date) VALUES(?,?,?,NOW())";
+
             $sqlarr = array($pid,$req->payerResponsibility,$status);
             $result = sqlInsert($sql,$sqlarr);
             $status = "waiting";
         
-            $req->originatingSystemId = $result;
+            $req->originatingSystemId = strval($result);
             $json = json_encode($req,true);
             $sql = "UPDATE mod_claimrev_eligibility SET request_json = '". $json ."', status = ? where id = ?";
             $sqlarr = array($status,$result);
             sqlStatement($sql,$sqlarr);
-            }
+        }
     }
     public static function SaveToDatabase($requests,$pid)
     {
@@ -102,6 +161,7 @@ class EligibilityObjectCreator
 
         foreach ($requests as $req)
         {
+           
             EligibilityObjectCreator::SaveSingleToDatabase($req,$pid);
         }
         
