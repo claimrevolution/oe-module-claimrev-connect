@@ -4,6 +4,7 @@
     {
 
         public $receiverType;//
+        public $groupName;
         public $firstName;//
         public $lastName;//
         public $middleName;//
@@ -14,7 +15,7 @@
         public $state;//
         public $zip;//
         public $providerNpi;//
-      
+        public $signature;      
 
         public function __construct() {
             

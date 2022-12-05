@@ -183,9 +183,10 @@ class ClaimRevApi
             $bearer            
          ];     
          
-        $url = ApiUrls::PORTAL_URL . "/api/Eligibility/v1/PostEligibilityRequest";   
+
+        $url = ApiUrls::PORTAL_URL . "/api/SharpRevenue/v1/RunSharpRevenue";   
         $payload = json_encode($eligibility, JSON_UNESCAPED_SLASHES);
-        error_log($payload);
+        
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);         
@@ -198,9 +199,8 @@ class ClaimRevApi
         $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);      
         curl_close($ch);
 
-        error_log($httpcode);
         $data = json_decode($result);   
-        error_log($result);   
+
         if($httpcode != 200)
         {
             return false;

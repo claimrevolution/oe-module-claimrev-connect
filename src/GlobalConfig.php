@@ -47,7 +47,7 @@ class GlobalConfig
      */
     private $cryptoGen;
 
-    public function __construct(array &$globalsArray)
+    public function __construct(array $globalsArray)
     {
         $this->globalsArray = $globalsArray;
         $this->cryptoGen = new CryptoGen();

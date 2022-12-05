@@ -63,18 +63,24 @@ $insurance = EligibilityData::getInsuranceData($pid);
                       include_once 'html_parts/validation_function.php';
                         foreach( $eligibilityCheck as $check )
                         { 
-                            if($check["response_json"] == null)
+                            if($check["eligibility_json"] == null)
                             { 
                                 echo("No Results");
                             }
                             else
                             {
-                                $result = $check["response_json"];
-                                $data = json_decode($result); 
+                                $result = $check["eligibility_json"];
+                                $eligibilityData = json_decode($result); 
                                 $benefits = null;
                                 $subscriberPatient = null;
-                                 if (property_exists($data, 'dependent'))
-                                 {
+                                $data = null;
+                                if (property_exists($eligibilityData, 'mapped271'))
+                                {
+                                    $data = $eligibilityData->mapped271;
+                                }
+
+                                if (property_exists($data, 'dependent'))
+                                {
                                     $dependent = $data->dependent;
                                     if($dependent != null)
                                     {
@@ -84,7 +90,7 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                             $subscriberPatient = $dependent;
                                         }
                                     }                                            
-                                 }   
+                                }   
 
                                  if (property_exists($data, 'subscriber'))
                                  {
@@ -177,7 +183,7 @@ if(isset($_POST['checkElig'])) { //check if form was submitted
     //$pid is found on the parent page that is including this php file
     $formatedPr = ValueMapping::MapPayerResponsibility($pr);
     EligibilityData::RemoveEligibilityCheck($pid,$formatedPr);
-    $requestObjects = EligibilityObjectCreator::BuildObject($pid,$pr);
+    $requestObjects = EligibilityObjectCreator::BuildObject($pid,$pr,null,null,null);
     EligibilityObjectCreator::SaveToDatabase($requestObjects,$pid );
     $request = $requestObjects[0];  
 }

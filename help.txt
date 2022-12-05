@@ -21,3 +21,11 @@ error -> something went wrong
 complete -> fished with final results
 
 so we can delete if waiting or error,and complete if aged out.
+
+debug helpers:
+
+write to error log
+error_log($payload);
+
+dump to screen
+var_dump($req);
