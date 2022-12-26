@@ -25,7 +25,7 @@ INSERT INTO `background_services` (`name`, `title`, `active`, `running`, `next_r
 ('ClaimRev_Receive', 'Get Reports from ClaimRev', 1, 0, '2017-05-09 17:39:10', 240, 'start_X12_Claimrev_get_reports', '/interface/modules/custom_modules/oe-module-claimrev-connect/src/billing_claimrev_service.php', 100);
 #Endif
 
-#IfNotRow background_services name ClaimRev_Receive
+#IfNotRow background_services name ClaimRev_Elig_Send_Receive
 INSERT INTO `background_services` (`name`, `title`, `active`, `running`, `next_run`, `execute_interval`, `function`, `require_once`, `sort_order`) VALUES
 ('ClaimRev_Elig_Send_Receive', 'Send and Receive Eligibility from ClaimRev', 1, 0, '2017-05-09 17:39:10', 1, 'start_send_eligibility', '/interface/modules/custom_modules/oe-module-claimrev-connect/src/Eligibility_ClaimRev_Service.php', 100);
 #Endif
