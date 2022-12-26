@@ -34,10 +34,8 @@ $globalsConfig = $bootstrap->getGlobalConfig();
     ?>
     <ul>
         <li>User name: <?php echo $userName?></li>
-        <li>Password: <?php echo $password; ?></li>
-
         <li>Client ID: <?php echo $clientId; ?></li>
-        <li>Client Secret: <?php echo  $client_secret?></li>
+        
         <?php 
         
             $token = ClaimRevApi::GetAccessToken($clientId,$client_secret, $userName, $password); 
