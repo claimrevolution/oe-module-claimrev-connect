@@ -99,13 +99,13 @@ class GlobalConfig
     {
         if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "S")
         {
-            return "https://stagingclaimrevcom.b2clogin.com/stagingclaimrevcom.onmicrosoft.com/B2C_1_sign-in-only/oauth2/v2.0/token";
+            return "https://stagingclaimrevcom.b2clogin.com/stagingclaimrevcom.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";
         }
         else if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D")
         {
-            return "https://claimrevportaldevelopment.b2clogin.com/claimrevportaldevelopment.onmicrosoft.com/B2C_1_sign-in-only/oauth2/v2.0/token";
+            return "https://claimrevportaldevelopment.b2clogin.com/claimrevportaldevelopment.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";
         }
-        return "https://productionclaimrevcom.b2clogin.com/productionclaimrevcom.onmicrosoft.com/B2C_1_sign-in-only/oauth2/v2.0/token";   
+        return "https://productionclaimrevcom.b2clogin.com/productionclaimrevcom.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";   
     }
 
     public function getApiServer()
