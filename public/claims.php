@@ -67,13 +67,13 @@
                     <div class="col">
                         <div class="form-group">
                             <label for="startDate">Send Date Start</label>
-                            <input type="text" class="form-control"  id="startDate" name="startDate"  placeholder="yyyy-mm-dd"/>
+                            <input type="date" class="form-control"  id="startDate" name="startDate"  placeholder="yyyy-mm-dd"/>
                         </div>
                     </div>                    
                     <div class="col">
                         <div class="form-group">
                             <label for="endDate">Send Date End</label>
-                            <input type="text" class="form-control"  id="endDate" name="endDate"  placeholder="yyyy-mm-dd"/>
+                            <input type="date" class="form-control"  id="endDate" name="endDate"  placeholder="yyyy-mm-dd"/>
                         </div>
                     </div>
                     <div class="col">
