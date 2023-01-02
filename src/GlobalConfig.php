@@ -21,10 +21,12 @@ use OpenEMR\Services\Globals\GlobalSetting;
 
 class GlobalConfig
 {
-    const CONFIG_OPTION_USERNAME = 'oe_claimrev_config_username';
-    const CONFIG_OPTION_PASSWORD = 'oe_claimrev_config_password';
+    const CONFIG_OPTION_ENVIRONMENT = 'oe_claimrev_config_environment';
     const CONFIG_OPTION_CLIENTID = 'oe_claimrev_config_clientid';
     const CONFIG_OPTION_CLIENTSECRET = 'oe_claimrev_config_clientsecret';
+    const CONFIG_OPTION_SCOPE = 'oe_claimrev_config_scope';
+    const CONFIG_OPTION_AUTHORITY = 'oe_claimrev_config_authority';
+
     const CONFIG_AUTO_SEND_CLAIM_FILES = 'oe_claimrev_config_auto_send_claim_files';
     const CONFIG_ENABLE_MENU = "oe_claimrev_config_add_menu_button";
     const CONFIG_SERVICE_TYPE_CODES = "oe_claimrev_config_service_type_codes";
@@ -33,6 +35,7 @@ class GlobalConfig
     const CONFIG_ENABLE_REALTIME_ELIGIBILITY = "oe_claimrev_enable_rte";
     const CONFIG_ENABLE_RESULTS_ELIGIBILITY = "oe_claimrev_eligibility_results_age";
     const CONFIG_ENABLE_AUTO_SEND_ELIGIBILITY = "oe_claimrev_send_eligibility";
+
 
     // const CONFIG_OPTION_TEXT = 'oe_skeleton_config_option_text';
     // const CONFIG_OPTION_ENCRYPTED = 'oe_skeleton_config_option_encrypted';
@@ -69,21 +72,56 @@ class GlobalConfig
         return true;
     }
 
-    public function getUserName()
-    {
-        return $this->getGlobalSetting(self::CONFIG_OPTION_USERNAME);
-    }
-
-    public function getPassword()
-    {
-        $encryptedValue = $this->getGlobalSetting(self::CONFIG_OPTION_PASSWORD);
-        return $this->cryptoGen->decryptStandard($encryptedValue);
-    }
-
     public function getClientId()
     {
         return $this->getGlobalSetting(self::CONFIG_OPTION_CLIENTID);
     }
+    public function getClientSecret()
+    {
+        $encryptedValue = $this->getGlobalSetting(self::CONFIG_OPTION_CLIENTSECRET);
+        return $this->cryptoGen->decryptStandard($encryptedValue);
+    }
+
+    public function getClientScope()
+    {
+        if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "S")
+        {
+            return "https://stagingclaimrevcom.onmicrosoft.com/portal/api/.default";
+        }
+        else if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D")
+        {
+            return "https://claimrevportaldevelopment.onmicrosoft.com/portal/api/.default";
+        }
+        return "https://productionclaimrevcom.onmicrosoft.com/portal/api/.default";        
+    }
+
+    public function getClientAuthority()
+    {
+        if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "S")
+        {
+            return "https://stagingclaimrevcom.b2clogin.com/stagingclaimrevcom.onmicrosoft.com/B2C_1_sign-in-only/oauth2/v2.0/token";
+        }
+        else if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D")
+        {
+            return "https://claimrevportaldevelopment.b2clogin.com/claimrevportaldevelopment.onmicrosoft.com/B2C_1_sign-in-only/oauth2/v2.0/token";
+        }
+        return "https://productionclaimrevcom.b2clogin.com/productionclaimrevcom.onmicrosoft.com/B2C_1_sign-in-only/oauth2/v2.0/token";   
+    }
+
+    public function getApiServer()
+    {
+        if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "S")
+        {
+            return "https://testapi.claimrev.com";
+        }
+        else if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D")
+        {
+            return "https://5eab-174-128-131-22.ngrok.io";
+        }
+        return "https://api.claimrev.com";   
+    }
+
+
 
     public function getAutoSendFiles()
     {
@@ -91,11 +129,7 @@ class GlobalConfig
     }
 
 
-    public function getClientSecret()
-    {
-        $encryptedValue = $this->getGlobalSetting(self::CONFIG_OPTION_CLIENTSECRET);
-        return $this->cryptoGen->decryptStandard($encryptedValue);
-    }
+
 
     public function getTextOption()
     {
@@ -120,17 +154,11 @@ class GlobalConfig
     public function getGlobalSettingSectionConfiguration()
     {
         $settings = [
-            self::CONFIG_OPTION_USERNAME => [
-                'title' => 'User Name'
-                ,'description' => 'User Name to login into ClaimRev Portal'
+            self::CONFIG_OPTION_ENVIRONMENT => [
+                'title' => 'ClaimRev Environment (P=Production)'
+                ,'description' => 'The system you connect to. P for production'
                 ,'type' => GlobalSetting::DATA_TYPE_TEXT
-                ,'default' => ''
-            ]
-            ,self::CONFIG_OPTION_PASSWORD => [
-                'title' => 'ClaimRev Portal Password'
-                ,'description' => 'This is the password to log into the ClaimRev Portal'
-                ,'type' => GlobalSetting::DATA_TYPE_ENCRYPTED
-                ,'default' => ''
+                ,'default' => 'P'
             ]
             ,self::CONFIG_OPTION_CLIENTID => [
                 'title' => 'Client ID'
@@ -148,15 +176,14 @@ class GlobalConfig
                 'title' => 'Eligibility Service Type Codes'
                 ,'description' => 'Comma Separated List of Service Type Codes'
                 ,'type' => GlobalSetting::DATA_TYPE_TEXT
-                ,'default' => ''
+                ,'default' => '30'
             ]
             ,self::CONFIG_AUTO_SEND_CLAIM_FILES => [
                 'title' => 'Auto Send Claim Files'
                 ,'description' => 'Send Claim Files to ClaimRev automatically'
                 ,'type' => GlobalSetting::DATA_TYPE_BOOL
                 ,'default' => ''
-            ]
-           
+            ]           
             ,self::CONFIG_ENABLE_MENU => [
                 'title' => 'Add module menu item'
                 ,'description' => 'Adding a menu item to the system (requires logging out and logging in again)'

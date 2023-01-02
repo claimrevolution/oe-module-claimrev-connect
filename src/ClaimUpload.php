@@ -40,13 +40,13 @@
             parent::__construct(self::TABLE_NAME);
         }
 
-        public static function sendWaitingFiles($clientId,$client_secret, $userName, $password)
+        public static function sendWaitingFiles()
         {
             $remoteTracker = new X12RemoteTracker();
             $x12_remotes = $remoteTracker->fetchByStatus(self::STATUS_WAITING);
             $x12_remote['messages'] = [];
 
-            $token = ClaimRevApi::GetAccessToken($clientId,$client_secret, $userName, $password); 
+            $token = ClaimRevApi::GetAccessToken(); 
          
 
             foreach ($x12_remotes as $x12_remote) {

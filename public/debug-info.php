@@ -27,21 +27,24 @@ $globalsConfig = $bootstrap->getGlobalConfig();
 </head>
 <body>
     <?php
+        $client_authority = $globalsConfig->getClientAuthority();     
         $clientId = $globalsConfig->getClientId();
-        $client_secret = $globalsConfig->getClientSecret();
-        $userName = $globalsConfig->getUserName();
-        $password = $globalsConfig->getPassword();                    
+        $client_scope = $globalsConfig->getClientScope();
+        $client_secret = $globalsConfig->getClientSecret();       
+        $api_server = $globalsConfig->getApiServer();          
     ?>
     <ul>
-        <li>User name: <?php echo $userName?></li>
+        <li>Authority: <?php echo $client_authority ?></li>
         <li>Client ID: <?php echo $clientId; ?></li>
-        
+        <li>Client Scope: <?php echo $client_scope; ?></li>
+        <li>API Server: <?php echo $api_server; ?></li>
         <?php 
         
-            $token = ClaimRevApi::GetAccessToken($clientId,$client_secret, $userName, $password); 
-    
+            $token = ClaimRevApi::GetAccessToken(); 
+            $defaultAccount = ClaimRevApi::getDefaultAccount($token); 
         ?>
-        <li> Token <?php echo $token ?>  </li>
+        <li> Default Account <?php echo $defaultAccount; ?>  </li>
+        <li> Token <?php echo $token; ?>  </li>
     </ul>
 
 <a href="index.php">Back to index</a>

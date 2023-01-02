@@ -6,8 +6,9 @@
         public $patientFirstName = "";
         public $patientLastName = "";
         public $receivedDateStart;
-        public $receivedDateEnd;
-        
+        public $receivedDateEnd;         
+        public $serviceDateStart;
+        public $serviceDateEnd;
 
         public function __construct() {
         

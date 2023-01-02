@@ -26,43 +26,19 @@ use OpenEMR\Common\Crypto\CryptoGen;
 function start_X12_Claimrev_send_files()
 {
     
-     $cryptoGen = new CryptoGen();
-     $clientId = $GLOBALS['oe_claimrev_config_clientid'];
-     $client_secret = $cryptoGen->decryptStandard($GLOBALS['oe_claimrev_config_clientsecret']);
-     $userName = $GLOBALS['oe_claimrev_config_username'];
-     $password =  $cryptoGen->decryptStandard($GLOBALS['oe_claimrev_config_password']);
-     $autoSend = $GLOBALS['oe_claimrev_config_auto_send_claim_files'];
-
-    
-    // $clientId = $globalsConfig->getClientId();
-    // $client_secret = $globalsConfig->getClientSecret();
-    // $userName = $globalsConfig->getUserName();
-    // $password = $globalsConfig->getPassword();
-    // $autoSend = $globalsConfig->getAutoSendFiles();
+    $autoSend = $GLOBALS['oe_claimrev_config_auto_send_claim_files'];
 
     if ($autoSend) {
-        ClaimUpload::sendWaitingFiles($clientId,$client_secret, $userName, $password); 
+        ClaimUpload::sendWaitingFiles(); 
     }
 }
 
 function start_X12_Claimrev_get_reports()
 {
-    
-     $cryptoGen = new CryptoGen();
-     $clientId = $GLOBALS['oe_claimrev_config_clientid'];
-     $client_secret = $cryptoGen->decryptStandard($GLOBALS['oe_claimrev_config_clientsecret']);
-     $userName = $GLOBALS['oe_claimrev_config_username'];
-     $password =  $cryptoGen->decryptStandard($GLOBALS['oe_claimrev_config_password']);
-     $autoSend = $GLOBALS['oe_claimrev_config_auto_send_claim_files'];
 
-    
-    // $clientId = $globalsConfig->getClientId();
-    // $client_secret = $globalsConfig->getClientSecret();
-    // $userName = $globalsConfig->getUserName();
-    // $password = $globalsConfig->getPassword();
-    // $autoSend = $globalsConfig->getAutoSendFiles();
+    $autoSend = $GLOBALS['oe_claimrev_config_auto_send_claim_files'];
 
     if ($autoSend) {
-        ReportDownload::getWaitingFiles($clientId,$client_secret, $userName, $password); 
+        ReportDownload::getWaitingFiles(); 
     }
 }

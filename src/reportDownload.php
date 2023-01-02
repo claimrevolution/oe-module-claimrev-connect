@@ -9,13 +9,13 @@ use OpenEMR\Modules\ClaimRevConnector\ClaimRevApi;
 class ReportDownload extends BaseService
 {
 
-    public static function getWaitingFiles($clientId,$client_secret, $userName, $password)
+    public static function getWaitingFiles()
     {
         $reportTypes = array("999", "277", "835");
         $siteDir = $GLOBALS['OE_SITE_DIR'];
         //should be something like '/var/www/localhost/htdocs/openemr/sites/default'  
            
-        $token = ClaimRevApi::GetAccessToken($clientId,$client_secret, $userName, $password); 
+        $token = ClaimRevApi::GetAccessToken(); 
         foreach($reportTypes as $reportType) 
         {
             $reportFolder = "f". $reportType;

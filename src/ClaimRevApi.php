@@ -4,28 +4,37 @@ namespace OpenEMR\Modules\ClaimRevConnector;
 use OpenEMR\Common\Http\HttpRestRequest;
 use OpenEMR\Modules\ClaimRevConnector\AuthoParam;
 use OpenEMR\Modules\ClaimRevConnector\UploadEdiFileContentModel;
-use OpenEMR\Modules\ClaimRevConnector\ApiUrls;
+use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+
 
 class ClaimRevApi
 {
-    public static function GetAccessToken($clientId,$client_secret, $userName, $password) 
+    public static function GetAccessToken() 
     {
-        
-        $param = new AuthoParam($clientId, $client_secret,$userName,$password);
+             
+        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        $globalsConfig = $bootstrap->getGlobalConfig();
+
+        $authority = $globalsConfig->getClientAuthority();     
+        $clientId = $globalsConfig->getClientId();
+        $scope = $globalsConfig->getClientScope();
+        $client_secret = $globalsConfig->getClientSecret();       
+        $api_server = $globalsConfig->getApiServer(); 
+
         $headers = [
-           'content-type: application/json'    
+           'content-type: application/x-www-form-urlencoded'    
         ];
 
-       
-        $payload = json_encode($param, JSON_UNESCAPED_SLASHES);    
+       $payload = "client_id=" . $clientId ."&scope=" . $scope . "&client_secret=" . $client_secret . "&grant_type=client_credentials";
 
         $ch = curl_init();
-        curl_setopt($ch,CURLOPT_URL, ApiUrls::OAUTH_URL); 
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch,CURLOPT_URL, $authority); 
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);   
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         echo "</br>";
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  
         $result = curl_exec($ch);
         curl_close($ch);
         $data = json_decode($result); 
@@ -40,6 +49,10 @@ class ClaimRevApi
 
     public static function uploadClaimFile($ediContents,$fileName, $token)
     {
+        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        $globalsConfig = $bootstrap->getGlobalConfig();     
+        $api_server = $globalsConfig->getApiServer(); 
+        
         $content = 'content-type: application/json';
         $bearer = 'authorization: Bearer ' . $token;
         $headers = [
@@ -47,7 +60,7 @@ class ClaimRevApi
             $bearer            
          ];     
          
-        $url = ApiUrls::PORTAL_URL . "/api/InputFile/v1";
+        $url = $api_server . "/api/InputFile/v1";
        
         $model = new UploadEdiFileContentModel("",$ediContents,$fileName);
         $payload = json_encode($model, JSON_UNESCAPED_SLASHES);
@@ -79,6 +92,10 @@ class ClaimRevApi
 
     public static function getReportFiles($reportType, $token)
     {
+        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        $globalsConfig = $bootstrap->getGlobalConfig();     
+        $api_server = $globalsConfig->getApiServer();
+
         $content = 'content-type: application/json';
         $bearer = 'authorization: Bearer ' . $token;
         $headers = [
@@ -88,7 +105,7 @@ class ClaimRevApi
          
         $params = array('ediType' => $reportType);
 
-        $endpoint = ApiUrls::PORTAL_URL . "/api/EdiResponseFile/v1";
+        $endpoint = $api_server . "/api/EdiResponseFile/v1";
         $url = $endpoint . '?' . http_build_query($params);
 
         $ch = curl_init();
@@ -107,9 +124,12 @@ class ClaimRevApi
 
         return $data;
     }
-
-    public static function searchClaims($claimSearch, $token)
+    public static function getDefaultAccount($token)
     {
+        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        $globalsConfig = $bootstrap->getGlobalConfig();     
+        $api_server = $globalsConfig->getApiServer();
+
         $content = 'content-type: application/json';
         $bearer = 'authorization: Bearer ' . $token;
         $headers = [
@@ -117,7 +137,39 @@ class ClaimRevApi
             $bearer            
          ];     
          
-        $url = ApiUrls::PORTAL_URL . "/api/ClaimView/v1/SearchClaims";
+   
+        $endpoint = $api_server . "/api/UserProfile/v1/GetDefaultAccount";
+        $url = $endpoint;
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $result = curl_exec($ch);
+        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE); 
+        
+        curl_close($ch);
+        if($httpcode != 200)
+        {
+            return "";
+        }
+
+        return $result;
+    }
+    public static function searchClaims($claimSearch, $token)
+    {
+        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        $globalsConfig = $bootstrap->getGlobalConfig();     
+        $api_server = $globalsConfig->getApiServer();
+
+        $content = 'content-type: application/json';
+        $bearer = 'authorization: Bearer ' . $token;
+        $headers = [
+            $content,
+            $bearer            
+         ];     
+         
+        $url = $api_server . "/api/ClaimView/v1/SearchClaims";
        
      
         $payload = json_encode($claimSearch, JSON_UNESCAPED_SLASHES);
@@ -144,6 +196,10 @@ class ClaimRevApi
     }
     public static function getEligibilityResult($originatingSystemId, $token)
     {
+        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        $globalsConfig = $bootstrap->getGlobalConfig();     
+        $api_server = $globalsConfig->getApiServer();
+
         $content = 'content-type: application/json';
         $bearer = 'authorization: Bearer ' . $token;
         $headers = [
@@ -152,7 +208,7 @@ class ClaimRevApi
          ];     
          
       
-        $endpoint = ApiUrls::PORTAL_URL . "/api/Eligibility/v1/GetEligibilityRequest";
+        $endpoint = $api_server . "/api/Eligibility/v1/GetEligibilityRequest";
         $params = array('originatingSystemId' => $originatingSystemId);   
         $url = $endpoint . '?' . http_build_query($params);
 
@@ -176,6 +232,10 @@ class ClaimRevApi
 
     public static function uploadEligibility($eligibility, $token)
     {
+        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        $globalsConfig = $bootstrap->getGlobalConfig();     
+        $api_server = $globalsConfig->getApiServer();
+        
         $content = 'content-type: application/json';
         $bearer = 'authorization: Bearer ' . $token;
         $headers = [
@@ -184,7 +244,7 @@ class ClaimRevApi
          ];     
          
 
-        $url = ApiUrls::PORTAL_URL . "/api/SharpRevenue/v1/RunSharpRevenue";   
+        $url = $api_server . "/api/SharpRevenue/v1/RunSharpRevenue";   
         $payload = json_encode($eligibility, JSON_UNESCAPED_SLASHES);
         
 
