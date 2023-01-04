@@ -200,7 +200,7 @@ class Bootstrap
         );
         ?>
         
-        <div> <?php include("eligibility.php");;?> </div>
+        <div> <?php include("Eligibility.php");?> </div>
     </section>
     <?php
     }

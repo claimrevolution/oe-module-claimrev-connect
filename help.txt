@@ -29,3 +29,10 @@ error_log($payload);
 
 dump to screen
 var_dump($req);
+
+Modules to install:
+sudo apt update
+sudo apt install php8.1-curl
+sudo phpenmod curl
+sudo systemctl restart apache2.service
+
