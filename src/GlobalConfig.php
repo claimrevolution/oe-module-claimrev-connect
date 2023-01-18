@@ -92,7 +92,7 @@ class GlobalConfig
         {
             return "https://claimrevportaldevelopment.onmicrosoft.com/portal/api/.default";
         }
-        return "https://productionclaimrevcom.onmicrosoft.com/portal/api/.default";        
+        return "https://portalclaimrev.onmicrosoft.com/portal/api/.default";        
     }
 
     public function getClientAuthority()
@@ -105,7 +105,7 @@ class GlobalConfig
         {
             return "https://claimrevportaldevelopment.b2clogin.com/claimrevportaldevelopment.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";
         }
-        return "https://productionclaimrevcom.b2clogin.com/productionclaimrevcom.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";   
+        return "https://portalclaimrev.b2clogin.com/portalclaimrev.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";   
     }
 
     public function getApiServer()
