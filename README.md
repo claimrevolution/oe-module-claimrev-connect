@@ -1,4 +1,4 @@
-# ClaimRev Connect Module of OpenEMR
+# ClaimRev Connect Module for OpenEMR
 This module creates the connetion the the Claim Revolution, LLC clearinghouse. Using rest API's the module will send your claim file in for processing and download the 999/277 files to the appropriate location on the OpenEMR system. 
 The module also handles the real-time eligibility of your patients. There are multiple ways this can be accomplished.
 <ul>
