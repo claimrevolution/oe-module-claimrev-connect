@@ -16,16 +16,11 @@
 
     function start_send_eligibility()
     {
-        $cryptoGen = new CryptoGen();
-        $clientId = $GLOBALS['oe_claimrev_config_clientid'];
-        $client_secret = $cryptoGen->decryptStandard($GLOBALS['oe_claimrev_config_clientsecret']);
-        $userName = $GLOBALS['oe_claimrev_config_username'];
-        $password =  $cryptoGen->decryptStandard($GLOBALS['oe_claimrev_config_password']);
         $autoSend = $GLOBALS['oe_claimrev_send_eligibility'];
 
         if($autoSend)
         {
-            EligibilityTransfer::sendWaitingEligibility($clientId,$client_secret, $userName, $password);
+            EligibilityTransfer::sendWaitingEligibility();
 
         }
         

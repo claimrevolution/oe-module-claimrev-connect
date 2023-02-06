@@ -19,9 +19,9 @@
             parent::__construct(self::TABLE_NAME);
         }
 
-        public static function sendWaitingEligibility($clientId,$client_secret, $userName, $password)
+        public static function sendWaitingEligibility()
         {
-            $token = ClaimRevApi::GetAccessToken($clientId,$client_secret, $userName, $password); 
+            $token = ClaimRevApi::GetAccessToken(); 
             $waitingEligibility = EligibilityData::getEligibilityCheckByStatus(self::STATUS_WAITING);
             EligibilityTransfer::sendEligibility($waitingEligibility,$token);
 
