@@ -12,7 +12,7 @@
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-require_once "vendor/autoload.php";
+//require_once "vendor/autoload.php"; // this may need to be enabled if installing by hand without composer.
 /**
  * @global EventDispatcher $eventDispatcher Injected by the OpenEMR module loader;
  */
