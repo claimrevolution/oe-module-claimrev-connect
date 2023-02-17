@@ -2,13 +2,21 @@
 namespace OpenEMR\Modules\ClaimRevConnector;
 
 use OpenEMR\Common\Http\HttpRestRequest;
-use OpenEMR\Modules\ClaimRevConnector\AuthoParam;
 use OpenEMR\Modules\ClaimRevConnector\UploadEdiFileContentModel;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
 
 
 class ClaimRevApi
 {
+    public static function CanConnectToClaimRev()
+    {
+        $token = ClaimRevApi::GetAccessToken();
+        if($token == "")
+        {
+            return "No";
+        }
+        return "Yes";
+    }
     public static function GetAccessToken() 
     {
              

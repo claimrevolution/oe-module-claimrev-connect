@@ -45,7 +45,7 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                 (Last Update: <?php echo($check["last_update"]);?>)
                             </div>
                             <div class="col">
-                              
+                                Message: <?php echo($check["response_message"]);?>
                             </div>
                                      
                         </div>
@@ -60,7 +60,14 @@ $insurance = EligibilityData::getInsuranceData($pid);
                 <div class="row">
                     <div class="col">
                     <?php 
-                      include_once 'html_parts/validation_function.php';
+                      //yeah.... this weird. why would someone do this? because I couldn't get the include 
+                      //see my files one directory up. I might of done something wrong but I spent a good hour
+                      //trying to figure it out. I finally decided to go use something like this and make it 
+                      //look at a hack.
+                      $path = __DIR__;
+                      $path = str_replace("src","templates",$path);
+                      
+                      include_once $path . '/validation_function.php';
                         foreach( $eligibilityCheck as $check )
                         { 
                             if($check["eligibility_json"] == null)
@@ -124,7 +131,7 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                         <div class="col">
                                             <?php 
                                                 $source = $data->informationSourceName;
-                                                include 'html_parts/source.php';
+                                                include $path .'/source.php';
                                             ?>
                                         </div>
                                     </div>
@@ -132,7 +139,7 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                         <div class="col">
                                             <?php 
                                                 $receiver = $data->receiver;
-                                                include 'html_parts/receiver.php';
+                                                include $path . '/receiver.php';
                                             ?>
                                         </div>
                                     </div>
@@ -143,8 +150,8 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                                              
                                              if($benefits != null)
                                              {
-                                                include 'html_parts/subscriber_patient.php';
-                                                include 'html_parts/benefit.php';
+                                                include $path .'/subscriber_patient.php';
+                                                include $path .'/benefit.php';
                                              }
                                             ?>
                                         </div>
@@ -154,7 +161,7 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                     <div class="row">
                                         <div class="col">
                                             <?php 
-                                            include 'html_parts/validation.php';
+                                            include $path . '/validation.php';
                                                                                      
                                                
                                             ?>

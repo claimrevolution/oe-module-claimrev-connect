@@ -52,8 +52,7 @@
         public static function getEligibilityResult($pid,$payer_responsibility)
         {
             $pr = ValueMapping::MapPayerResponsibility($payer_responsibility);
-            $sql = "SELECT status, coalesce(last_checked,create_date) as last_update,response_json,eligibility_json,individual_json  FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? LIMIT 1";
-            error_log($pr);
+            $sql = "SELECT status, coalesce(last_checked,create_date) as last_update,response_json,eligibility_json,individual_json,response_message  FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? LIMIT 1";
             $res = sqlStatement($sql, array($pid,$pr));   
             return $res;
         }
@@ -62,38 +61,44 @@
         {
             $sql = "UPDATE mod_claimrev_eligibility SET status = ? ";
 
+            $sqlarr = array($status);
             if($updateLastChecked)
             {
                 $sql = $sql . ",last_checked = NOW() ";
             }
             if($response_json != null)
             {
-                $sql = $sql . " ,response_json = '" . $response_json . "'";
+                $sql = $sql . " ,response_json = ?";
+                array_push($sqlarr,$response_json);
             }      
             if($request_json != null)
             {
-                $sql = $sql . " ,request_json = '" . $request_json . "'";
+                $sql = $sql . " ,request_json = ?";
+                array_push($sqlarr,$request_json);
             }             
             if($responseMessage != null)
             {
-                $sql = $sql . " ,response_message = '" . $responseMessage . "'";
+                $sql = $sql . " ,response_message = ?";
+                array_push($sqlarr,$responseMessage);
             } 
   	        if($raw271 != null)
             {
-                $sql = $sql . " ,raw271 = '" . $raw271 . "'";
+                $sql = $sql . " ,raw271 = ? ";
+                array_push($sqlarr,$raw271);
             } 
             if($eligibility_json != null)
             {
-                $sql = $sql . " ,eligibility_json = '" . $eligibility_json . "'";
+                $sql = $sql . " ,eligibility_json = ?";
+                array_push($sqlarr, $eligibility_json);
             } 
             if($individual_json != null)
             {
-                $sql = $sql . " ,individual_json = '" . $individual_json . "'";
+                $sql = $sql . " ,individual_json = ?";
+                array_push($sqlarr, $individual_json);
             } 
 
             $sql = $sql . " WHERE id = ?";
-
-            $sqlarr = array($status,$id);
+            array_push($sqlarr, $id);         
             sqlStatement($sql,$sqlarr);
 
         }

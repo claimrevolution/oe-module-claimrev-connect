@@ -44,6 +44,7 @@
             {
                 $eid = $eligibility['id'];                
                 $request_json = $eligibility['request_json'];
+                
                 $elig = json_decode($request_json); 
                 $result = ClaimRevApi::uploadEligibility($elig,$token);     
                 EligibilityTransfer::saveEligibility($result,$eid);
@@ -71,6 +72,12 @@
 
             $responseMessage = $result->responseMessage;          
             $mappedData = $result->mappedData;
+            
+            if($result->isFatalError )
+            {
+                EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,$payload,true, $responseMessage,null,null,null);
+                return;
+            }
             if (!property_exists($mappedData, 'individuals')) 
             {
                 EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR,null,$payload,true, $responseMessage . ' missing individuals Property',null,null,null);
