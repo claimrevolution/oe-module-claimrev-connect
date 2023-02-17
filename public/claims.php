@@ -1,10 +1,11 @@
-<?php  
+<?php   
     namespace OpenEMR\Modules\ClaimRevConnector;
+    $tab="claims";
     require_once "../../../../globals.php";
+    //require_once "../../vendor/autoload.php"; 
     require_once '../src/ClaimSearchModel.php';
     require_once '../src/ClaimSearch.php';
     require_once '../src/ClaimRevApi.php';
-    require_once '../src/AuthoParam.php';
     require_once '../src/UploadEdiFileContentModel.php';
 
    
@@ -39,26 +40,10 @@
     <body>
         <div class="row"> 
             <div class="col">
-                <nav class="navbar navbar-expand-lg navbar-light bg-light">
-                    <a class="navbar-brand" href="#">ClaimRev Connect</a>
-                    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                        <ul class="navbar-nav mr-auto">
-                            <li class="nav-item active">
-                                <a class="nav-link" href="index.php">Home</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="claims.php">Claims <span class="sr-only">(current)</span></a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="debug-info.php">Debug</a>
-                            </li>
-
-                        </ul>        
-                    </div>
-                </nav>       
+            <?php
+               
+                include '../templates/navbar.php';
+            ?>
             </div>
         </div>
         <form method="post" action="<?=$_SERVER['PHP_SELF'];?>">
@@ -67,13 +52,13 @@
                     <div class="col">
                         <div class="form-group">
                             <label for="startDate">Send Date Start</label>
-                            <input type="date" class="form-control"  id="startDate" name="startDate"  placeholder="yyyy-mm-dd"/>
+                            <input type="date" class="form-control"  id="startDate" name="startDate" value="<?php echo isset($_POST['startDate']) ? $_POST['startDate'] : '' ?>"  placeholder="yyyy-mm-dd"/>
                         </div>
                     </div>                    
                     <div class="col">
                         <div class="form-group">
                             <label for="endDate">Send Date End</label>
-                            <input type="date" class="form-control"  id="endDate" name="endDate"  placeholder="yyyy-mm-dd"/>
+                            <input type="date" class="form-control"  id="endDate" name="endDate" value="<?php echo isset($_POST['endDate']) ? $_POST['endDate'] : '' ?>" placeholder="yyyy-mm-dd"/>
                         </div>
                     </div>
                     <div class="col">
@@ -87,13 +72,13 @@
                     <div class="col">
                         <div class="form-group">
                             <label for="patFirstName">Patient First Name</label>
-                            <input type="text" class="form-control"  id="patFirstName" name="patFirstName"  placeholder="Patient First Name"/>
+                            <input type="text" class="form-control"  id="patFirstName" name="patFirstName"  value="<?php echo isset($_POST['patFirstName']) ? $_POST['patFirstName'] : '' ?>"  placeholder="Patient First Name"/>
                         </div>
                     </div>
                     <div class="col">
                         <div class="form-group">
                             <label for="patLastName">Patient Last Name</label>
-                            <input type="text" class="form-control"  id="patLastName" name="patLastName"  placeholder="Patient Last Name"/>
+                            <input type="text" class="form-control"  id="patLastName" name="patLastName"  value="<?php echo isset($_POST['patLastName']) ? $_POST['patLastName'] : '' ?>" placeholder="Patient Last Name"/>
                         </div>
                     </div>
                     <div class="col">
@@ -133,8 +118,7 @@
                         <th scope="col">Payer Info</th>
                         <th scope="col">Provider Info</th>
                         <th scope="col">Patient Info</th>
-                        <th scope="col">Claim Info</th>
-                        <th scope="col">Messages</th>
+                        <th scope="col">Claim Info</th>                 
                     </tr>
                 </thead>
                 <tbody>
@@ -316,18 +300,27 @@
                                         <?php echo(substr($data->serviceDate,0,10) ); ?> / <?php echo(substr($data->serviceDateEnd,0,10) ); ?> 
                                     </div>
                                 </div>
-                            </td>
-                            <td>
-                                <?php 
+                            </td>                            
+                        </tr>  
+                        <?php if($data->errors)
+                            {
+                        ?>
+                        <tr>
+                            <td colspan="6">
+                                <ul>
+                            <?php 
+                                
                                     foreach($data->errors as $err)
                                     { 
                                 ?>
-                                        <?php echo($err->errorMessage); ?>
+                                        <li><?php echo($err->errorMessage); ?></li>
                                 <?php 
                                     } 
                                 ?>
+                                </ul>
                             </td>
-                        </tr>                   
+                        </tr>   
+                        <?php } ?>         
                   <?php } ?>    
                   </tbody>               
                 </table>

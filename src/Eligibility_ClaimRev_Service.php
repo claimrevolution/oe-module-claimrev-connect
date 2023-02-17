@@ -17,14 +17,12 @@
     function start_send_eligibility()
     {
         $autoSend = $GLOBALS['oe_claimrev_send_eligibility'];
-
         if($autoSend)
         {
             EligibilityTransfer::sendWaitingEligibility();
 
         }
-        
-
+      
     }
 
 ?>

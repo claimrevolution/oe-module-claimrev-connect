@@ -153,8 +153,8 @@ class EligibilityObjectCreator
         
             $req->originatingSystemId = strval($result);
             $json = json_encode($req,true);
-            $sql = "UPDATE mod_claimrev_eligibility SET request_json = '". $json ."', status = ? where id = ?";
-            $sqlarr = array($status,$result);
+            $sql = "UPDATE mod_claimrev_eligibility SET request_json = ?, status = ? where id = ?";
+            $sqlarr = array($json,$status,$result);
             sqlStatement($sql,$sqlarr);
         }
     }
@@ -164,8 +164,7 @@ class EligibilityObjectCreator
         //lets check for status for waiting or error and replace the json and reset-status, what to do if inprogress??
 
         foreach ($requests as $req)
-        {
-           
+        {           
             EligibilityObjectCreator::SaveSingleToDatabase($req,$pid);
         }
         

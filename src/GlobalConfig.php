@@ -35,14 +35,7 @@ class GlobalConfig
     const CONFIG_ENABLE_REALTIME_ELIGIBILITY = "oe_claimrev_enable_rte";
     const CONFIG_ENABLE_RESULTS_ELIGIBILITY = "oe_claimrev_eligibility_results_age";
     const CONFIG_ENABLE_AUTO_SEND_ELIGIBILITY = "oe_claimrev_send_eligibility";
-
-
-    // const CONFIG_OPTION_TEXT = 'oe_skeleton_config_option_text';
-    // const CONFIG_OPTION_ENCRYPTED = 'oe_skeleton_config_option_encrypted';
-    // const CONFIG_OVERRIDE_TEMPLATES = "oe_skeleton_override_twig_templates";
-    // const CONFIG_ENABLE_BODY_FOOTER = "oe_skeleton_add_body_footer";
-    // const CONFIG_ENABLE_FHIR_API = "oe_skeleton_enable_fhir_api";
-
+    const CONFIG_X12_PARTNER_NAME = "oe_claimrev_x12_partner_name";
     private $globalsArray;
 
     /**
@@ -116,7 +109,7 @@ class GlobalConfig
         }
         else if($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D")
         {
-            return "https://5eab-174-128-131-22.ngrok.io";
+            return "https://a3a9-174-128-131-22.ngrok.io";
         }
         return "https://api.claimrev.com";   
     }
@@ -171,6 +164,12 @@ class GlobalConfig
                 ,'description' => 'Contact ClaimRev for this value'
                 ,'type' => GlobalSetting::DATA_TYPE_ENCRYPTED
                 ,'default' => ''
+            ]
+            ,self::CONFIG_X12_PARTNER_NAME => [
+                'title' => 'X12 Partner Name'
+                ,'description' => 'Name of the X12 Partner Record'
+                ,'type' => GlobalSetting::DATA_TYPE_TEXT
+                ,'default' => 'ClaimRev'
             ]
             ,self::CONFIG_SERVICE_TYPE_CODES => [
                 'title' => 'Eligibility Service Type Codes'
