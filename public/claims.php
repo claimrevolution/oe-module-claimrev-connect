@@ -2,7 +2,7 @@
     namespace OpenEMR\Modules\ClaimRevConnector;
     $tab="claims";
     require_once "../../../../globals.php";
-    //require_once "../../vendor/autoload.php"; 
+   
     require_once '../src/ClaimSearchModel.php';
     require_once '../src/ClaimSearch.php';
     require_once '../src/ClaimRevApi.php';
