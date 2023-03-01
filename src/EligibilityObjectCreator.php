@@ -114,7 +114,7 @@ class EligibilityObjectCreator
             $payer->payerName = $subscriberRow['payer_name'];
             $payer->subscriberNumber = $subscriberRow['policy_number'];
             $revenueTools->subscriberFirstName = $subscriberRow['subscriber_fname'];
-            $revenueTools->subscriberLastName = $subscriberRow['subscriber_fname'];
+            $revenueTools->subscriberLastName = $subscriberRow['subscriber_lname'];
             if($subscriberRow['subscriber_dob'] != "0000-00-00")
             {
                 $revenueTools->subscriberDob = $subscriberRow['subscriber_dob'];
