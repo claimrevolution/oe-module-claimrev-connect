@@ -113,7 +113,7 @@ class ClaimRevApi
          
         $params = array('ediType' => $reportType);
 
-        $endpoint = $api_server . "/api/EdiResponseFile/v1";
+        $endpoint = $api_server . "/api/EdiResponseFile/v1/GetReport";
         $url = $endpoint . '?' . http_build_query($params);
 
         $ch = curl_init();

@@ -63,7 +63,7 @@ $insurance = EligibilityData::getInsuranceData($pid);
                       //yeah.... this weird. why would someone do this? because I couldn't get the include 
                       //see my files one directory up. I might of done something wrong but I spent a good hour
                       //trying to figure it out. I finally decided to go use something like this and make it 
-                      //look at a hack.
+                      //look like a hack.
                       $path = __DIR__;
                       $path = str_replace("src","templates",$path);
                       
@@ -115,10 +115,21 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                  }                       
 
                     ?>
+                            
+
                                 <ul class="nav nav-tabs mb-2">
                                 <?php  $classActive = "active"; $first="true"; ?>
                                 <li class="nav-item" role="presentation">
-                                        <a id="claimrev-ins-benefits-tab" aria-selected="<?php echo($first); ?>" class="nav-link active"  data-toggle="tab" role="tab" href="#eligibility-benefits"> Benefits  </a>
+                                        <a id="claimrev-ins-quick-tab" aria-selected="<?php echo($first); ?>" class="nav-link active"  data-toggle="tab" role="tab" href="#eligibility-quick"> Quick Info  </a>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <a id="claimrev-ins-deductibles-tab" aria-selected="<?php echo($first); ?>" class="nav-link"  data-toggle="tab" role="tab" href="#eligibility-deductibles"> Deductibles  </a>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <a id="claimrev-ins-benefits-tab" aria-selected="<?php echo($first); ?>" class="nav-link"  data-toggle="tab" role="tab" href="#eligibility-benefits"> Benefits  </a>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <a id="claimrev-ins-medicare-tab" aria-selected="<?php echo($first); ?>" class="nav-link"  data-toggle="tab" role="tab" href="#eligibility-medicare"> Medicare </a>
                                     </li>
                                     <li class="nav-item" role="presentation">
                                         <a id="claimrev-ins-validations-tab" aria-selected="<?php echo($first); ?>" class="nav-link"  data-toggle="tab" role="tab" href="#eligibility-validations"> Validations  </a>
@@ -126,7 +137,35 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                     <?php $first = "false"; $classActive="";  ?>                                
                                 </ul>
                             <div class="tab-content">
-                                <div id="eligibility-benefits" class="tab-pane active">
+                                <div id="eligibility-quick" class="tab-pane active">
+                                    <div class="row">
+                                        <div class="col">
+                                            <?php                                             
+                                                include $path .'/quick_info.php';
+                                            ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="eligibility-deductibles" class="tab-pane">
+                                    <div class="row">
+                                        <div class="col">
+                                            <?php                                             
+                                                include $path .'/deductibles.php';
+                                            ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="eligibility-medicare" class="tab-pane">
+                                    <div class="row">
+                                        <div class="col">
+                                            <?php                                             
+                                                include $path .'/medicare_info.php';
+                                            ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="eligibility-benefits" class="tab-pane">
+                                 
                                     <div class="row">
                                         <div class="col">
                                             <?php 
@@ -161,9 +200,7 @@ $insurance = EligibilityData::getInsuranceData($pid);
                                     <div class="row">
                                         <div class="col">
                                             <?php 
-                                            include $path . '/validation.php';
-                                                                                     
-                                               
+                                                include $path . '/validation.php';
                                             ?>
                                         </div>
                                     </div>

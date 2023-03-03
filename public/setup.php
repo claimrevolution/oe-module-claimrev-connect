@@ -64,7 +64,7 @@
                         <h6>
                             Background Services
                         </h6>
-                        Are are required background services that are needed to send claims, pick up reports, and check eligibility.
+                        There are required background services that are needed to send claims, pick up reports, and check eligibility.
                         They are listed below in a table, but if there is something strange going on use the button to re-create the records.
                         <form method="post" action="<?=$_SERVER['PHP_SELF'];?>">
                             <button type="submit" name="backgroundService" class="btn btn-primary">Set Defaults</button>
