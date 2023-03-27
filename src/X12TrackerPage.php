@@ -12,16 +12,16 @@
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-use OpenEMR\Modules\ClaimRevConnector\ClaimRevApi;
-use OpenEMR\Common\Crypto\CryptoGen;
-
-class ClaimSearch
+class X12TrackerPage
 {
-    public static function search($search)
+    public static function searchX12Tracker($postData)
     {
-        $token = ClaimRevApi::getAccessToken();
-        $data = ClaimRevApi::searchClaims($search, $token);
+        $startDate = $_POST['startDate'];
+        $endDate = $_POST['endDate'];
 
-        return $data;
+        $sql = "SELECT * FROM x12_remote_tracker where created_at BETWEEN ? AND ?";
+        $files = sqlStatementNoLog($sql, array($startDate,$endDate));
+
+        return $files;
     }
 }

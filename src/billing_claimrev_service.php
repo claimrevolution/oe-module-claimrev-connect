@@ -3,9 +3,9 @@
 /**
  * Executes the background service for billing, which sends EDI claims
  * directly to claimRev if enabled
- * 
- * @package   OpenEMR
- * @link      http://www.claimrev.com
+ *
+ * @package OpenEMR
+ * @link    http://www.claimrev.com
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
@@ -25,11 +25,10 @@ use OpenEMR\Common\Crypto\CryptoGen;
  */
 function start_X12_Claimrev_send_files()
 {
-    
     $autoSend = $GLOBALS['oe_claimrev_config_auto_send_claim_files'];
 
     if ($autoSend) {
-        ClaimUpload::sendWaitingFiles(); 
+        ClaimUpload::sendWaitingFiles();
     }
 }
 
@@ -39,6 +38,6 @@ function start_X12_Claimrev_get_reports()
     $autoSend = $GLOBALS['oe_claimrev_config_auto_send_claim_files'];
 
     if ($autoSend) {
-        ReportDownload::getWaitingFiles(); 
+        ReportDownload::getWaitingFiles();
     }
 }
