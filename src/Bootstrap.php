@@ -6,8 +6,8 @@
  * production and is intended to serve as the barebone requirements you need to get started
  * writing modules that can be installed and used in OpenEMR.
  *
- * @package   OpenEMR
- * @link      http://www.open-emr.org
+ * @package OpenEMR
+ * @link    http://www.open-emr.org
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
@@ -16,7 +16,7 @@
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-require_once($GLOBALS["srcdir"] . "/options.inc.php");
+require_once $GLOBALS["srcdir"] . "/options.inc.php";
 /**
  * Note the below use statements are importing classes from the OpenEMR core codebase
  */
@@ -39,7 +39,6 @@ use OpenEMR\Modules\ClaimRevConnector\ClaimRevRteService;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Twig\Error\LoaderError;
 use Twig\Loader\FilesystemLoader;
-
 
 class Bootstrap
 {
@@ -146,29 +145,30 @@ class Bootstrap
         }
     }
 
-    
+
     public function registerDemographicsEvents()
     {
-        if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_ELIGIBILITY_CARD))
-        {
+        if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_ELIGIBILITY_CARD)) {
             $this->eventDispatcher->addListener(pRenderEvent::EVENT_SECTION_LIST_RENDER_AFTER, [$this, 'renderEligibilitySection']);
-        }        
+        }
     }
 
     public function registerEligibilityEvents()
     {
-        if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_REALTIME_ELIGIBILITY))
-        {
+        if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_REALTIME_ELIGIBILITY)) {
             $this->eventDispatcher->addListener(AppointmentSetEvent::EVENT_HANDLE, [$this, 'renderAppointmentSetEvent']);
         }
     }
     public function renderAppointmentSetEvent(AppointmentSetEvent $event)
     {
-        ClaimRevRteService::CreateEligibilityFromAppointment($event->eid);      
-
+        ClaimRevRteService::createEligibilityFromAppointment($event->eid);
     }
     public function renderEligibilitySection(pRenderEvent $event)
     {
+        //using this magic thing again, for some reason I can't move up to the templates directory!!!
+        $path = __DIR__;
+        $path = str_replace("src", "templates", $path);
+
         $pid = $event->getPid();
         ?>
         <section>
@@ -184,8 +184,7 @@ class Bootstrap
         $widgetAuth = false;
         $fixedWidth = false;
         $forceExpandAlways = false;
-         
-        
+
         expand_collapse_widget(
             $widgetTitle,
             $widgetLabel,
@@ -200,9 +199,9 @@ class Bootstrap
         );
         ?>
         
-        <div> <?php include("Eligibility.php");?> </div>
+        <div> <?php include $path . "/eligibility.php";?> </div>
     </section>
-    <?php
+        <?php
     }
     /**
      * We tie into any events dealing with the templates / page rendering of the system here
@@ -214,11 +213,11 @@ class Bootstrap
 
     /**
      * Add our javascript and css file for the module to the main tabs page of the system
+     *
      * @param RenderEvent $event
      */
     public function renderMainBodyScripts(RenderEvent $event)
     {
-        
     }
 
     /**
@@ -226,7 +225,6 @@ class Bootstrap
      */
     public function addTemplateOverrideLoader(TwigEnvironmentEvent $event)
     {
-        
         try {
             $twig = $event->getTwigEnvironment();
             if ($twig === $this->twig) {
@@ -244,13 +242,13 @@ class Bootstrap
     }
 
     public function registerMenuItems()
-    {       
+    {
         if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_MENU)) {
             /**
-             * @var EventDispatcherInterface $eventDispatcher
-             * @var array $module
-             * @global                       $eventDispatcher @see ModulesApplication::loadCustomModule
-             * @global                       $module @see ModulesApplication::loadCustomModule
+             * @var    EventDispatcherInterface $eventDispatcher
+             * @var    array $module
+             * @global $eventDispatcher @see ModulesApplication::loadCustomModule
+             * @global $module @see ModulesApplication::loadCustomModule
              */
             $this->eventDispatcher->addListener(MenuEvent::MENU_UPDATE, [$this, 'addCustomModuleMenuItem']);
         }
@@ -312,12 +310,10 @@ class Bootstrap
 
     public function subscribeToApiEvents()
     {
-        
     }
 
     public function addCustomSkeletonApi(RestApiCreateEvent $event)
     {
-      
         /**
          * Events must ALWAYS be returned
          */
@@ -327,7 +323,8 @@ class Bootstrap
     /**
      * Adds the webhook api scopes to the oauth2 scope validation events for the standard api.  This allows the webhook
      * to be fired.
-     * @param RestApiScopeEvent $event
+     *
+     * @param  RestApiScopeEvent $event
      * @return RestApiScopeEvent
      */
     public function addApiScope(RestApiScopeEvent $event)
@@ -337,8 +334,7 @@ class Bootstrap
             $scopes[] = 'user/CustomSkeletonResource.read';
             $scopes[] = 'patient/CustomSkeletonResource.read';
             // only add system scopes if they are actually enabled
-            if (\RestConfig::areSystemScopesEnabled())
-            {
+            if (\RestConfig::areSystemScopesEnabled()) {
                 $scopes[] = 'system/CustomSkeletonResource.read';
             }
             $event->setScopes($scopes);

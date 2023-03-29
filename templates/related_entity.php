@@ -1,139 +1,141 @@
 <?php
-if($benefit->relatedEntities != null && $benefit->relatedEntities )
-{
-?>
+
+/**
+ *
+ * @package OpenEMR
+ * @link    http://www.open-emr.org
+ *
+ * @author    Brad Sharp <brad.sharp@claimrev.com>
+ * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
+ * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
+ */
+
+if ($benefit->relatedEntities != null && $benefit->relatedEntities) {
+    ?>
     <div class="row">
         <div class="col">
             <div class="card">
                 <div class="card-body">
-                    <h6>Related Entity</h6>
-<?php
-                    foreach($benefit->relatedEntities as $relatedEntity)
-                    {
-                        if($relatedEntity->entityIdentifierCodeQualifier == "2")
-                        {
-?>
+                    <h6> <?php echo xlt("Related Entity"); ?></h6>
+    <?php
+    foreach ($benefit->relatedEntities as $relatedEntity) {
+        if ($relatedEntity->entityIdentifierCodeQualifier == "2") {
+            ?>
                             <dl class="row">
                                 <dt class="col">
-                                    Organization Name
+                    <?php echo xlt("Organization Name"); ?>
                                 </dt>
                                 <dd class="col">
-                                    <?php echo($relatedEntity->lastOrganizationName);?>                                             
+                    <?php echo text($relatedEntity->lastOrganizationName);?>
                                 </dd>
                             <dl>
-<?php
-                        }
-                        if($relatedEntity->entityIdentifierCodeQualifier == "1")
-                        {
-?>
+            <?php
+        }
+        if ($relatedEntity->entityIdentifierCodeQualifier == "1") {
+            ?>
                             <dl class="row">
                                 <dt class="col">
-                                Name
+                    <?php echo xlt("Name"); ?>                                  
                                 </dt>
                                 <dd class="col">
-                                    <?php echo($relatedEntity->firstName);?> <?php echo($relatedEntity->middleName);?> <?php echo($relatedEntity->lastOrganizationName);?> <?php echo($relatedEntity->suffix);?>                                     
+                    <?php echo text($relatedEntity->firstName);?> <?php echo text($relatedEntity->middleName);?> <?php echo text($relatedEntity->lastOrganizationName);?> <?php echo text($relatedEntity->suffix);?>                                     
                                 </dd>
                             <dl>
-<?php
-                        }
-                        if($relatedEntity->entityIdentifierCodeQualifier == "1")
-                        {
-?>
+            <?php
+        }
+        if ($relatedEntity->entityIdentifierCodeQualifier == "1") {
+            ?>
                             <dl class="row">
                                 <dt class="col">
                                     
                                 </dt>
                                 <dd class="col">
-                                    <?php echo($relatedEntity->identifier);?>                                     
+                    <?php echo text($relatedEntity->identifier);?>                                     
                                 </dd>
                             <dl>
-<?php
-                        }
-?>
+            <?php
+        }
+        ?>
                     <dl class="row">
                         <dt class="col">
-                            Address
+            <?php echo xlt("Address"); ?>                                
                         </dt>
                         <dd class="col">
                             <div class="row">
                                 <div class="col">
-                                    <?php echo($relatedEntity->address->address1);?>  
+                    <?php echo text($relatedEntity->address->address1);?>  
                                 </div>
                             </div> 
                             <div class="row">
                                 <div class="col">
-                                    <?php echo($relatedEntity->address->address2);?>  
+                    <?php echo text($relatedEntity->address->address2);?>  
                                 </div>
                             </div>
                             <div class="row">
                                 <div class="col">
-                                    <?php echo($relatedEntity->address->city);?>  
+                    <?php echo text($relatedEntity->address->city);?>  
                                 </div>
                                 <div class="col">
-                                    <?php echo($relatedEntity->address->state);?>  
+                    <?php echo text($relatedEntity->address->state);?>  
                                 </div>
                                 <div class="col">
-                                    <?php echo($relatedEntity->address->zip);?>  
+                    <?php echo text($relatedEntity->address->zip);?>  
                                 </div>
                             </div>
                         </dd>
                     </dl>
-<?php
-                        if($relatedEntity->taxonomyCode != "")
-                        {
-?>
+        <?php
+        if ($relatedEntity->taxonomyCode != "") {
+            ?>
                             <dl class="row">
                                 <dt class="col">
-                                    Taxonomy Code
+                    <?php echo xlt("Taxonomy Code"); ?>  
+                                    
                                 </dt>
                                 <dd class="col">
-                                    (<?php echo($relatedEntity->taxonomyProviderCode);?>) <?php echo($relatedEntity->taxonomyCode);?>                                        
+                                    (<?php echo text($relatedEntity->taxonomyProviderCode);?>) <?php echo text($relatedEntity->taxonomyCode);?>                                        
                                 </dd>
                             <dl>
-<?php
-                        }
-                        if($relatedEntity->contacts != null && $relatedEntity->contacts )
-                        {
-                            foreach($relatedEntity->contacts as $c)
-                            {
-?>
+            <?php
+        }
+        if ($relatedEntity->contacts != null && $relatedEntity->contacts) {
+            foreach ($relatedEntity->contacts as $c) {
+                ?>
                                 <dl class="row">                                    
                                     <dt class="col">
-                                        Contact Name
+                        <?php echo xlt("Contact Name"); ?>                                           
                                     </dt>
                                     <dt class="col">
-                                        <?php echo($c->contactName); ?>
-<?php 
-                                            foreach($c->contactMethods as $m)
-                                            {
-?>
+                        <?php echo text($c->contactName); ?>
+                <?php
+                foreach ($c->contactMethods as $m) {
+                    ?>
                                                 <dl class="row">
                                                     <dt class="col">
-                                                        <?php echo($c->contactType); ?>
+                                <?php echo text($c->contactType); ?>
                                                     </dt>
                                                     <dt class="col">
-                                                        <?php echo($c->contactValue); ?>
+                                <?php echo text($c->contactValue); ?>
                                                     </dt>
                                                 </dl>  
-<?php
-                                            }
-?>
+                    <?php
+                }
+                ?>
   
                                     
                                     </dt>
                                 </dl>
-<?php
-                            }
-                        }
+                <?php
+            }
+        }
+    }//end foreach
 
-                    }//end foreach
 
-
-?>
+    ?>
                 </div>
             </div>
         </div>
     </div>
-<?php
-}   
+    <?php
+}
 ?>

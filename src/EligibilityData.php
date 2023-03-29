@@ -1,14 +1,28 @@
 <?php
+
+/**
+ *
+ * @package OpenEMR
+ * @link    http://www.open-emr.org
+ *
+ * @author    Brad Sharp <brad.sharp@claimrev.com>
+ * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
+ * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
+ */
+
     namespace OpenEMR\Modules\ClaimRevConnector;
+
     use OpenEMR\Modules\ClaimRevConnector\ValueMapping;
 
-    class EligibilityData
+class EligibilityData
+{
+    public function __construct()
     {
-        public function __construct() 
-        { } 
-        public static function GetPatientIdFromAppointment($eid)
-        {
-            $sql = "SELECT 
+    }
+
+    public static function getPatientIdFromAppointment($eid)
+    {
+        $sql = "SELECT 
                 pc_pid 
                 ,DATE_FORMAT(pc_eventDate, '%Y-%m-%d') as appointmentDate
                 ,pc_facility as facilityId
@@ -16,96 +30,86 @@
                 from openemr_postcalendar_events 
                 WHERE pc_eid = ? 
             LIMIT 1";
-            $sqlarr = array($eid);
-            $result = sqlStatement($sql,$sqlarr);  
-            if(sqlNumRows($result)==1)
-            {
-                foreach ($result as $row)
-                {
-                    //return $row["pc_pid"];
-                    return $row;
-                }
+        $sqlarr = array($eid);
+        $result = sqlStatement($sql, $sqlarr);
+        if (sqlNumRows($result) == 1) {
+            foreach ($result as $row) {
+                //return $row["pc_pid"];
+                return $row;
             }
-            return null;
         }
-        public static function RemoveEligibilityCheck($pid,$payer_responsibility)
-        {
-            $sql = "DELETE FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? ";
-            $sqlarr = array($pid,$payer_responsibility);
-            $result = sqlStatement($sql,$sqlarr);            
-        }
-        public static function getEligibilityCheckByStatus($status)
-        {
-            $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ?";
-            $sqlarr = array($status);
+        return null;
+    }
+    public static function removeEligibilityCheck($pid, $payer_responsibility)
+    {
+        $sql = "DELETE FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? ";
+        $sqlarr = array($pid,$payer_responsibility);
+        $result = sqlStatement($sql, $sqlarr);
+    }
+    public static function getEligibilityCheckByStatus($status)
+    {
+        $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ?";
+        $sqlarr = array($status);
 
-            $result = sqlStatement($sql,$sqlarr);   
-            return $result; 
-        }
-        public static function getEligibilityResults($status, $minutes)
-        {
-            $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ? AND TIMESTAMPDIFF(MINUTE,last_checked,NOW()) >= ?";
-            $sqlarr = array($status,$minutes);            
-            $result = sqlStatement($sql,$sqlarr); 
-            return $result; 
-        }
-        public static function getEligibilityResult($pid,$payer_responsibility)
-        {
-            $pr = ValueMapping::MapPayerResponsibility($payer_responsibility);
-            $sql = "SELECT status, coalesce(last_checked,create_date) as last_update,response_json,eligibility_json,individual_json,response_message  FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? LIMIT 1";
-            $res = sqlStatement($sql, array($pid,$pr));   
-            return $res;
-        }
+        $result = sqlStatement($sql, $sqlarr);
+        return $result;
+    }
+    public static function getEligibilityResults($status, $minutes)
+    {
+        $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ? AND TIMESTAMPDIFF(MINUTE,last_checked,NOW()) >= ?";
+        $sqlarr = array($status,$minutes);
+        $result = sqlStatement($sql, $sqlarr);
+        return $result;
+    }
+    public static function getEligibilityResult($pid, $payer_responsibility)
+    {
+        $pr = ValueMapping::mapPayerResponsibility($payer_responsibility);
+        $sql = "SELECT status, coalesce(last_checked,create_date) as last_update,response_json,eligibility_json,individual_json,response_message  FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? LIMIT 1";
+        $res = sqlStatement($sql, array($pid,$pr));
+        return $res;
+    }
 
-        public static function updateEligibilityRecord($id, $status,$request_json, $response_json, $updateLastChecked, $responseMessage,$raw271,$eligibility_json,$individual_json)
-        {
-            $sql = "UPDATE mod_claimrev_eligibility SET status = ? ";
+    public static function updateEligibilityRecord($id, $status, $request_json, $response_json, $updateLastChecked, $responseMessage, $raw271, $eligibility_json, $individual_json)
+    {
+        $sql = "UPDATE mod_claimrev_eligibility SET status = ? ";
 
-            $sqlarr = array($status);
-            if($updateLastChecked)
-            {
-                $sql = $sql . ",last_checked = NOW() ";
-            }
-            if($response_json != null)
-            {
-                $sql = $sql . " ,response_json = ?";
-                array_push($sqlarr,$response_json);
-            }      
-            if($request_json != null)
-            {
-                $sql = $sql . " ,request_json = ?";
-                array_push($sqlarr,$request_json);
-            }             
-            if($responseMessage != null)
-            {
-                $sql = $sql . " ,response_message = ?";
-                array_push($sqlarr,$responseMessage);
-            } 
-  	        if($raw271 != null)
-            {
+        $sqlarr = array($status);
+        if ($updateLastChecked) {
+            $sql = $sql . ",last_checked = NOW() ";
+        }
+        if ($response_json != null) {
+            $sql = $sql . " ,response_json = ?";
+            array_push($sqlarr, $response_json);
+        }
+        if ($request_json != null) {
+            $sql = $sql . " ,request_json = ?";
+            array_push($sqlarr, $request_json);
+        }
+        if ($responseMessage != null) {
+            $sql = $sql . " ,response_message = ?";
+            array_push($sqlarr, $responseMessage);
+        }
+        if ($raw271 != null) {
                 $sql = $sql . " ,raw271 = ? ";
-                array_push($sqlarr,$raw271);
-            } 
-            if($eligibility_json != null)
-            {
-                $sql = $sql . " ,eligibility_json = ?";
-                array_push($sqlarr, $eligibility_json);
-            } 
-            if($individual_json != null)
-            {
-                $sql = $sql . " ,individual_json = ?";
-                array_push($sqlarr, $individual_json);
-            } 
-
-            $sql = $sql . " WHERE id = ?";
-            array_push($sqlarr, $id);         
-            sqlStatement($sql,$sqlarr);
-
+                array_push($sqlarr, $raw271);
+        }
+        if ($eligibility_json != null) {
+            $sql = $sql . " ,eligibility_json = ?";
+            array_push($sqlarr, $eligibility_json);
+        }
+        if ($individual_json != null) {
+            $sql = $sql . " ,individual_json = ?";
+            array_push($sqlarr, $individual_json);
         }
 
-        public static function getSubscriberData($pid=0,$pr = "")
-        {
-                $query = "SELECT 
+        $sql = $sql . " WHERE id = ?";
+        array_push($sqlarr, $id);
+        sqlStatement($sql, $sqlarr);
+    }
+
+    public static function getSubscriberData($pid = 0, $pr = "")
+    {
+            $query = "SELECT 
                     c.name as payer_name
                     , coalesce( c.eligibility_id, c.cms_id) as payerId
                     , i.subscriber_lname
@@ -117,23 +121,21 @@
                 inner join insurance_companies as c ON (c.id = i.provider)
                 where i.pid = ?";
 
-                $ary = array($pid);
+            $ary = array($pid);
 
-                if($pr != "")
-                {
-                    $query = $query . " AND i.type = ?";
-                    array_push($ary,$pr);
-                }
-                $query = $query . " LIMIT 1";
-
-           
-            $res = sqlStatement($query, $ary);  
-            return $res;
+        if ($pr != "") {
+            $query = $query . " AND i.type = ?";
+            array_push($ary, $pr);
         }
+            $query = $query . " order by i.date desc LIMIT 1";
 
-        public static function getRequiredInsuranceData($pid=0)
-        {
-            $query = "SELECT
+            $res = sqlStatement($query, $ary);
+            return $res;
+    }
+
+    public static function getRequiredInsuranceData($pid = 0)
+    {
+        $query = "SELECT
                         d.facility_id,
                         f.pos_code,            
                         f.facility_npi as facility_npi,
@@ -166,14 +168,14 @@
                     WHERE p.pid = ?
                     LIMIT 1";
 
-            $ary = array($pid);
-            $res = sqlStatement($query, $ary);      
-           
-            return $res;
-        }
-        public static function getFacilityData($fid)
-        {
-            $query = "SELECT          
+        $ary = array($pid);
+        $res = sqlStatement($query, $ary);
+
+        return $res;
+    }
+    public static function getFacilityData($fid)
+    {
+        $query = "SELECT          
                         f.pos_code,            
                         f.facility_npi as facility_npi,
                         f.name as facility_name,
@@ -183,23 +185,21 @@
                     WHERE f.id = ?
                     LIMIT 1";
 
-            $ary = array($fid);
-            $result = sqlStatement($query, $ary);      
-           
-            if(sqlNumRows($result)==1)
-            {
-                foreach ($result as $row)
-                {                
-                    return $row;
-                }
-            }
+        $ary = array($fid);
+        $result = sqlStatement($query, $ary);
 
-            return null;
+        if (sqlNumRows($result) == 1) {
+            foreach ($result as $row) {
+                return $row;
+            }
         }
 
-        public static function getPatientData($pid=0)
-        {
-            $query = "SELECT          
+        return null;
+    }
+
+    public static function getPatientData($pid = 0)
+    {
+        $query = "SELECT          
                         p.lname,
                         p.fname,
                         p.mname,
@@ -223,23 +223,21 @@
                     WHERE p.pid = ?
                     LIMIT 1";
 
-            $ary = array($pid);
-            $result = sqlStatement($query, $ary);      
-           
-            if(sqlNumRows($result)==1)
-            {
-                foreach ($result as $row)
-                {                
-                    return $row;
-                }
-            }
+        $ary = array($pid);
+        $result = sqlStatement($query, $ary);
 
-            return null;
+        if (sqlNumRows($result) == 1) {
+            foreach ($result as $row) {
+                return $row;
+            }
         }
 
-        public static function getProviderData($pid=0)
-        {
-            $query = "SELECT
+        return null;
+    }
+
+    public static function getProviderData($pid = 0)
+    {
+        $query = "SELECT
                         d.lname as provider_lname,
                         d.fname as provider_fname,
                         d.npi as provider_npi,
@@ -248,41 +246,35 @@
                     WHERE d.id = ?
                     LIMIT 1";
 
-            $ary = array($pid);
-            $result = sqlStatement($query, $ary);      
-           
-            if(sqlNumRows($result)==1)
-            {
-                foreach ($result as $row)
-                {                
-                    return $row;
-                }
-            }
+        $ary = array($pid);
+        $result = sqlStatement($query, $ary);
 
-            return null;
+        if (sqlNumRows($result) == 1) {
+            foreach ($result as $row) {
+                return $row;
+            }
         }
 
-        public static function getInsuranceData($pid=0,$pr = "")
-        {
-            $query = "SELECT
+        return null;
+    }
+
+    public static function getInsuranceData($pid = 0, $pr = "")
+    {
+        $query = "SELECT
 			i.type as payer_responsibility           
 			FROM patient_data AS p			
 			INNER JOIN insurance_data AS i ON
 				i.pid = p.id 
 			LEFT JOIN insurance_companies as c ON (c.id = i.provider)
                 WHERE p.pid = ? ";
-            $ary = array($pid);
+        $ary = array($pid);
 
-            if($pr != "")
-            {
-                $query = $query . "AND i.type = ?";
-                array_push($ary,$pr);
-            }
-            $res = sqlStatement($query, $ary);      
-           
-            return $res;
+        if ($pr != "") {
+            $query = $query . "AND i.type = ?";
+            array_push($ary, $pr);
         }
-    }
-    
+        $res = sqlStatement($query, $ary);
 
-?>
+        return $res;
+    }
+}
