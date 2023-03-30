@@ -262,8 +262,11 @@ class EligibilityData
     {
         $query = "SELECT
 			i.type as payer_responsibility           
-			FROM insurance_data AS i			
-            WHERE i.pid = ? ";
+			FROM patient_data AS p			
+			INNER JOIN insurance_data AS i ON
+				i.pid = p.id 
+			LEFT JOIN insurance_companies as c ON (c.id = i.provider)
+                WHERE p.pid = ? ";
         $ary = array($pid);
 
         if ($pr != "") {
