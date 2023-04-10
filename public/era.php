@@ -31,13 +31,6 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
 if (!empty($_POST)) {
     $dlStatus = $_POST['downloadStatus'];
 
-    if (isset($_POST['downloadFile'])) {
-        if (isset($_POST['eraId'])) {
-            EraPage::downloadEra($_POST['eraId']);
-        }
-        $datas = EraPage::searchEras($_POST);
-    }
-   
     if (isset($_POST['SubmitButton'])) { //check if form was submitted
         $datas = EraPage::searchEras($_POST);
         if ($datas == null) {
