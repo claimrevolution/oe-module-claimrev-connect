@@ -28,6 +28,7 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
     exit;
 }
 
+$dlStatus = 2;
 if (!empty($_POST)) {
     $dlStatus = $_POST['downloadStatus'];
 
