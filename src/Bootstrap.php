@@ -197,7 +197,7 @@ class Bootstrap
             $forceExpandAlways
         );
         ?>
-        
+
         <div> <?php include $path . "/eligibility.php";?> </div>
     </section>
         <?php
@@ -333,7 +333,7 @@ class Bootstrap
             $scopes[] = 'user/CustomSkeletonResource.read';
             $scopes[] = 'patient/CustomSkeletonResource.read';
             // only add system scopes if they are actually enabled
-            if (\RestConfig::areSystemScopesEnabled()) {
+            if ($event->isSystemScopesEnabled()) {
                 $scopes[] = 'system/CustomSkeletonResource.read';
             }
             $event->setScopes($scopes);
