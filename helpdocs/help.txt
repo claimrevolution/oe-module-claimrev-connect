@@ -6,10 +6,14 @@ docker commit development-easy_mysql_1
 docker-compose down
 
 check for php errors
+docker compose exec openemr /root/devtools php-log
 sh -c '/root/devtools php-log'
 
 adding demo data
+docker compose exec openemr /root/devtools dev-reset-install-demodata
 sh -c '/root/devtools dev-reset-install-demodata'
+
+
 
 ngrok http https://0.0.0.0:44302
 

@@ -3,7 +3,7 @@
 /**
  *
  * @package OpenEMR
- * @link    http://www.open-emr.org
+ * @link    https://www.open-emr.org
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
@@ -12,48 +12,41 @@
 
     require_once "../../../../globals.php";
 
+    use OpenEMR\Common\Acl\AccessDeniedHelper;
     use OpenEMR\Common\Acl\AclMain;
-    use OpenEMR\Common\Twig\TwigContainer;
+    use OpenEMR\Common\Csrf\CsrfUtils;
     use OpenEMR\Modules\ClaimRevConnector\X12TrackerPage;
+    use OpenEMR\Core\Header;
 
     $tab = "x12";
 
     //ensure user has proper access
 if (!AclMain::aclCheckCore('acct', 'bill')) {
-    echo (new TwigContainer(null, $GLOBALS['kernel']))->getTwig()->render('core/unauthorized.html.twig', ['pageTitle' => xl("ClaimRev Connect - X12 Tracker")]);
-    exit;
+    AccessDeniedHelper::denyWithTemplate("ACL check failed for acct/bill: ClaimRev Connect - X12 Tracker", xl("ClaimRev Connect - X12 Tracker"));
 }
 
     $datas = [];
     //check if form was submitted
 if (isset($_POST['SubmitButton'])) {
+    /** @var array<string, mixed> $_POST */
     $datas = X12TrackerPage::searchX12Tracker($_POST);
 }
 ?>
 
 <html>
     <head>
-        <link rel="stylesheet" href="../../../../../public/assets/bootstrap/dist/css/bootstrap.min.css">
+        <title><?php echo xlt("ClaimRev Connect - X12 Tracker"); ?></title>
+        <?php Header::setupHeader(); ?>
     </head>
-    <title><?php echo xlt("ClaimRev Connect - X12 Tracker"); ?></title>
-    <body>
-        <div class="row">
-            <div class="col">
-                <?php require '../templates/navbar.php'; ?>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col">
-                <p>
-                    <?php echo xlt("This tab helps give visibility to files that are in the x12 Tracker table."); ?>
-                </p>
-
-            </div>
-        </div>
-        <div class="row">
-            <div class="col">
-                <form method="post" action="x12Tracker.php">
-                    <div class="card">
+    <body class="body_top">
+        <div class="container-fluid">
+            <?php require '../templates/navbar.php'; ?>
+            <p class="mt-3">
+                <?php echo xlt("This tab helps give visibility to files that are in the x12 Tracker table."); ?>
+            </p>
+            <form method="post" action="x12Tracker.php">
+                <div class="card">
+                    <div class="card-body">
                         <div class="row">
                             <div class="col">
                                 <div class="form-group">
@@ -78,57 +71,88 @@ if (isset($_POST['SubmitButton'])) {
                             <div class="col">
                                 <button type="submit" name="SubmitButton" class="btn btn-primary"><?php echo xlt("Submit"); ?></button>
                             </div>
-                            <div class="col-10">
-
-                            </div>
                         </div>
                     </div>
-                </form>
+                </div>
+            </form>
 
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col">
-                <?php
-                if ($datas != null) { ?>
-                    <table class="table">
+            <?php
+            if ($datas != null) { ?>
+                <table class="table table-striped mt-3">
                         <thead>
                             <tr>
                                 <th scope="col"><?php echo xlt("Filename"); ?></th>
-                                <th scope="col"><?php echo xlt("Messages"); ?></th>
                                 <th scope="col"><?php echo xlt("Status"); ?></th>
+                                <th scope="col"><?php echo xlt("Messages"); ?></th>
+                                <th scope="col"><?php echo xlt("Created"); ?></th>
+                                <th scope="col"><?php echo xlt("Updated"); ?></th>
+                                <th scope="col"><?php echo xlt("Action"); ?></th>
                             </tr>
                         </thead>
                         <tbody>
                         <?php
                         foreach ($datas as $data) {
+                            $status = $data["status"];
+                            $isError = str_contains($status, 'error');
+                            $badgeClass = 'badge-secondary';
+                            if ($status === 'success') {
+                                $badgeClass = 'badge-success';
+                            } elseif ($status === 'waiting') {
+                                $badgeClass = 'badge-warning';
+                            } elseif ($status === 'in-progress') {
+                                $badgeClass = 'badge-info';
+                            } elseif ($isError) {
+                                $badgeClass = 'badge-danger';
+                            }
                             ?>
-                            <tr>
+                            <tr id="tracker-row-<?php echo attr($data["id"]); ?>">
+                                <td><?php echo text($data["x12_filename"]); ?></td>
+                                <td><span id="status-badge-<?php echo attr($data["id"]); ?>" class="badge <?php echo attr($badgeClass); ?>"><?php echo text($status); ?></span></td>
+                                <td><?php echo text($data["messages"]); ?></td>
+                                <td><?php echo text($data["created_at"]); ?></td>
+                                <td><?php echo text($data["updated_at"]); ?></td>
                                 <td>
-                                <?php echo text($data["x12_filename"]); ?>
-                                </td>
-                                <td>
-                                <?php echo text($data["status"]); ?>
-                                </td>
-                                <td>
-                                <?php echo text($data["messages"]); ?>
+                                    <?php if ($isError) { ?>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="retryFile(<?php echo attr_js($data['id']); ?>)">
+                                            <i class="fa fa-redo"></i> <?php echo xlt("Retry"); ?>
+                                        </button>
+                                    <?php } ?>
                                 </td>
                             </tr>
                         <?php } ?>
                         </tbody>
                     </table>
-                <?php } ?>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col">
-                <a href="index.php"><?php echo xlt("Back to index"); ?></a>
-            </div>
-        </div>
+            <?php } ?>
 
+            <script>
+                function retryFile(id) {
+                    if (!confirm(<?php echo xlj("Reset this file to waiting so it will be resent?"); ?>)) {
+                        return;
+                    }
+                    $.ajax({
+                        url: 'x12_retry.php',
+                        type: 'POST',
+                        data: {
+                            id: id,
+                            csrf_token: <?php echo js_escape(CsrfUtils::collectCsrfToken()); ?>
+                        },
+                        dataType: 'json',
+                        success: function(response) {
+                            if (response.success) {
+                                var badge = $('#status-badge-' + id);
+                                badge.removeClass('badge-danger badge-secondary').addClass('badge-warning');
+                                badge.text(<?php echo xlj("waiting"); ?>);
+                                $('#tracker-row-' + id + ' td:last button').remove();
+                            } else {
+                                alert(response.message || <?php echo xlj("Failed to retry file"); ?>);
+                            }
+                        },
+                        error: function() {
+                            alert(<?php echo xlj("Error communicating with server"); ?>);
+                        }
+                    });
+                }
+            </script>
+        </div>
     </body>
-
-
-
 </html>

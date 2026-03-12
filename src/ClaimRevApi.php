@@ -1,338 +1,538 @@
 <?php
 
 /**
+ * ClaimRev API client using PSR-18 HTTP client.
  *
- * @package OpenEMR
- * @link    http://www.open-emr.org
- *
+ * @package   OpenEMR
+ * @link      https://www.open-emr.org
  * @author    Brad Sharp <brad.sharp@claimrev.com>
+ * @author    Michael A. Smith <michael@opencoreemr.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
+ * @copyright Copyright (c) 2026 OpenCoreEMR Inc <https://opencoreemr.com/>
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-use OpenEMR\Common\Http\HttpRestRequest;
-use OpenEMR\Modules\ClaimRevConnector\UploadEdiFileContentModel;
-use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\GuzzleException;
+use OpenEMR\Core\OEGlobalsBag;
+use Psr\Http\Message\ResponseInterface;
+use SensitiveParameter;
 
-class ClaimRevApi
+/**
+ * API client for interacting with the ClaimRev clearinghouse service.
+ */
+readonly class ClaimRevApi
 {
-    public static function canConnectToClaimRev()
-    {
-        $token = ClaimRevApi::GetAccessToken();
-        if ($token == "") {
-            return "No";
-        }
-        return "Yes";
+    public function __construct(
+        private ClientInterface $client,
+        #[SensitiveParameter] private string $accessToken,
+    ) {
     }
-    public static function getAccessToken()
+
+    /**
+     * Build version-tracking headers for API calls.
+     *
+     * @return array<string, string>
+     */
+    private static function getVersionHeaders(): array
     {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
+        // Use include (not include_once) so local vars are always set,
+        // even if version.php was already loaded elsewhere in the request.
+        @include(OEGlobalsBag::getInstance()->get('fileroot') . "/version.php");
+        $oemrVersion = ($v_major ?? '?') . '.' . ($v_minor ?? '?') . '.' . ($v_patch ?? '?') . ($v_tag ?? '');
+
+        return [
+            'X-Module-Version' => Bootstrap::MODULE_VERSION,
+            'X-OpenEMR-Version' => $oemrVersion,
+            'X-Client-Platform' => 'openemr',
+        ];
+    }
+
+    /**
+     * Create a ClaimRevApi instance using global configuration.
+     *
+     * Acquires an OAuth access token and returns a configured client.
+     *
+     * @throws ClaimRevAuthenticationException if token acquisition fails
+     * @throws ModuleNotConfiguredException if required settings are missing
+     */
+    public static function makeFromGlobals(): self
+    {
+        $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
         $globalsConfig = $bootstrap->getGlobalConfig();
 
         $authority = $globalsConfig->getClientAuthority();
         $clientId = $globalsConfig->getClientId();
         $scope = $globalsConfig->getClientScope();
-        $client_secret = $globalsConfig->getClientSecret();
-        $api_server = $globalsConfig->getApiServer();
+        $clientSecret = $globalsConfig->getClientSecret();
+        $apiServer = $globalsConfig->getApiServer();
 
-        $headers = [
-           'content-type: application/x-www-form-urlencoded'
-        ];
-
-        $payload = "client_id=" . $clientId . "&scope=" . $scope . "&client_secret=" . $client_secret . "&grant_type=client_credentials";
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $authority);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-        $result = curl_exec($ch);
-        curl_close($ch);
-        $data = json_decode($result);
-
-        $token = "";
-        if (property_exists($data, 'access_token')) {
-            $token = $data->access_token;
+        if (!is_string($clientId) || $clientId === '') {
+            throw new ModuleNotConfiguredException('ClaimRev client ID is not configured');
         }
-        return $token;
+        if (!is_string($clientSecret) || $clientSecret === '') {
+            throw new ClaimRevAuthenticationException('ClaimRev client secret could not be decrypted');
+        }
+
+        $token = self::acquireAccessToken($authority, $clientId, $scope, $clientSecret);
+
+        $client = new Client([
+            'base_uri' => $apiServer,
+            'headers' => array_merge([
+                'accept' => 'application/json',
+                'content-type' => 'application/json',
+            ], self::getVersionHeaders()),
+        ]);
+
+        return new self($client, $token);
     }
 
-    public static function uploadClaimFile($ediContents, $fileName, $token)
+    /**
+     * Acquire an OAuth access token from the ClaimRev authority.
+     *
+     * @throws ClaimRevAuthenticationException if token acquisition fails
+     */
+    private static function acquireAccessToken(
+        string $authority,
+        string $clientId,
+        string $scope,
+        #[SensitiveParameter] string $clientSecret,
+    ): string {
+        $client = new Client();
+        try {
+            $response = $client->request('POST', $authority, [
+                'form_params' => [
+                    'client_id' => $clientId,
+                    'scope' => $scope,
+                    'client_secret' => $clientSecret,
+                    'grant_type' => 'client_credentials',
+                ],
+            ]);
+        } catch (GuzzleException $e) {
+            throw new ClaimRevAuthenticationException(
+                'Failed to acquire ClaimRev access token: ' . $e->getMessage(),
+                0,
+                $e
+            );
+        }
+
+        $data = self::parseResponse($response);
+        if (!isset($data['access_token']) || !is_string($data['access_token'])) {
+            throw new ClaimRevAuthenticationException(
+                'ClaimRev token response missing access_token'
+            );
+        }
+
+        return $data['access_token'];
+    }
+
+    /**
+     * Test connectivity by checking if authentication succeeds.
+     */
+    public function canConnect(): bool
     {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
+        return $this->accessToken !== '';
+    }
 
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
+    /**
+     * Get the default account information.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getDefaultAccount(): array
+    {
+        return $this->get('/api/UserProfile/v1/GetDefaultAccount');
+    }
 
-        $url = $api_server . "/api/InputFile/v1";
+    /**
+     * Upload an EDI claim file to ClaimRev.
+     *
+     * @throws ClaimRevApiException on API error
+     */
+    public function uploadClaimFile(string $ediContents, string $fileName): void
+    {
+        $model = new UploadEdiFileContentModel('', $ediContents, $fileName);
+        $response = $this->post('/api/InputFile/v1', $model);
 
-        $model = new UploadEdiFileContentModel("", $ediContents, $fileName);
-        $payload = json_encode($model, JSON_UNESCAPED_SLASHES);
+        if (isset($response['isError']) && $response['isError']) {
+            throw new ClaimRevApiException(
+                'ClaimRev reported an error uploading file',
+                200,
+                json_encode($response, JSON_THROW_ON_ERROR),
+                '/api/InputFile/v1'
+            );
+        }
+    }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    /**
+     * Get report files of a specific type.
+     *
+     * @return list<array<string, mixed>>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getReportFiles(string $reportType): array
+    {
+        $result = $this->get('/api/EdiResponseFile/v1/GetReport', ['ediType' => $reportType]);
+        /** @var list<array<string, mixed>> */
+        return array_values($result);
+    }
 
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        $data = json_decode($result);
-
-        if ($httpcode != 200) {
+    /**
+     * Anonymous call (no auth token required) to get ClaimRev contact info.
+     *
+     * @return array<string, mixed>|false Returns false on failure
+     */
+    public static function getSupportInfo(): array|false
+    {
+        try {
+            $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+            $globalsConfig = $bootstrap->getGlobalConfig();
+            $apiServer = $globalsConfig->getApiServer();
+        } catch (\Throwable) {
             return false;
         }
 
-        if ($data->isError) {
+        $client = new Client([
+            'headers' => array_merge([
+                'accept' => 'application/json',
+                'content-type' => 'application/json',
+            ], self::getVersionHeaders()),
+            'timeout' => 5,
+        ]);
+
+        try {
+            $response = $client->request('GET', $apiServer . '/api/SupportInfo/v1/GetSupportInfo');
+            if ($response->getStatusCode() !== 200) {
+                return false;
+            }
+            return self::parseResponse($response);
+        } catch (GuzzleException) {
             return false;
         }
+    }
 
+    /**
+     * Search for claims (paginated).
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function searchClaims(object $claimSearch): array
+    {
+        return $this->post('/api/ClaimView/v1/SearchClaimsPaged', $claimSearch);
+    }
+
+    /**
+     * Export claims search results as CSV.
+     *
+     * @return array<string, mixed> Contains 'fileText' and 'fileName'
+     * @throws ClaimRevApiException on API error
+     */
+    public function searchClaimsCsv(object $claimSearch): array
+    {
+        return $this->post('/api/ClaimView/v1/SearchClaimsCsv', $claimSearch);
+    }
+
+    /**
+     * Get errors for a specific claim.
+     *
+     * @return list<array<string, mixed>>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getClaimErrors(string $claimId): array
+    {
+        return $this->get('/api/ClaimView/v1/GetClaimErrors', ['claimId' => $claimId]);
+    }
+
+    /**
+     * Get available claim statuses.
+     *
+     * @return list<array<string, mixed>>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getClaimStatuses(): array
+    {
+        return $this->get('/api/ClaimView/v1/GetClaimStatuses');
+    }
+
+    /**
+     * Get portal notifications.
+     *
+     * @return list<array<string, mixed>>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getPortalNotifications(bool $isReadFilter = false): array
+    {
+        return $this->get('/api/NotificationMgmt/v1/GetPortalNotifications', [
+            'isReadFilter' => $isReadFilter ? 'true' : 'false',
+        ]);
+    }
+
+    /**
+     * Set notification read status on ClaimRev.
+     *
+     * @throws ClaimRevApiException on API error
+     */
+    public function setNotificationReadStatus(int|string $portalNotificationId, bool $isRead = true): bool
+    {
+        $payload = (object) [
+            'portalNotificationId' => $portalNotificationId,
+            'isRead' => $isRead,
+        ];
+        $this->post('/api/NotificationMgmt/v1/SetNotificationReadStatus', $payload);
         return true;
     }
 
-    public static function getReportFiles($reportType, $token)
+    /**
+     * Mark a claim as worked or unworked.
+     *
+     * @throws ClaimRevApiException on API error
+     */
+    public function markClaimAsWorked(string $objectId, bool $isWorked): bool
     {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
-
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
-
-        $params = array('ediType' => $reportType);
-
-        $endpoint = $api_server . "/api/EdiResponseFile/v1/GetReport";
-        $url = $endpoint . '?' . http_build_query($params);
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        curl_close($ch);
-        if ($httpcode != 200) {
-            return "";
-        }
-        $data = json_decode($result);
-
-        return $data;
-    }
-    public static function getDefaultAccount($token)
-    {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
-
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
-
-
-        $endpoint = $api_server . "/api/UserProfile/v1/GetDefaultAccount";
-        $url = $endpoint;
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        curl_close($ch);
-        if ($httpcode != 200) {
-            return "";
-        }
-
-        return $result;
-    }
-    public static function searchClaims($claimSearch, $token)
-    {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
-
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
-
-        $url = $api_server . "/api/ClaimView/v1/SearchClaims";
-
-        $payload = json_encode($claimSearch, JSON_UNESCAPED_SLASHES);
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        $data = json_decode($result);
-
-        if ($httpcode != 200) {
-            return false;
-        }
-
-        return $data;
-    }
-    public static function searchDownloadableFiles($downloadSearch, $token)
-    {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
-
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
-
-        $url = $api_server . "/FileManagement/SearchOutboundClientFiles";
-
-        $payload = json_encode($downloadSearch, JSON_UNESCAPED_SLASHES);
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        $data = json_decode($result);
-
-        if ($httpcode != 200) {
-            return false;
-        }
-
-        return $data;
-    }
-    public static function getFileForDownload($objectId, $token)
-    {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
-
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
-
-        $endpoint = $api_server . "/FileManagement/GetFileForDownload";
-        $params = array('id' => $objectId);
-        $url = $endpoint . '?' . http_build_query($params);
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        curl_close($ch);
-        if ($httpcode != 200) {
-            return false;
-        }
-        $data = json_decode($result);
-        return $data;
-    }
-    public static function getEligibilityResult($originatingSystemId, $token)
-    {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
-
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
-
-        $endpoint = $api_server . "/api/Eligibility/v1/GetEligibilityRequest";
-        $params = array('originatingSystemId' => $originatingSystemId);
-        $url = $endpoint . '?' . http_build_query($params);
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        curl_close($ch);
-        if ($httpcode != 200) {
-            return false;
-        }
-        $data = json_decode($result);
-
-        return $data;
+        $payload = (object) [
+            'objectId' => $objectId,
+            'statusId' => $isWorked ? 1 : 0,
+        ];
+        $this->post('/api/ClaimManager/v1/MarkClaimAsWorked', $payload);
+        return true;
     }
 
-    public static function uploadEligibility($eligibility, $token)
+    /**
+     * Search for downloadable files (ERA/835 files).
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function searchDownloadableFiles(object $downloadSearch): array
     {
-        $bootstrap = new Bootstrap($GLOBALS['kernel']->getEventDispatcher());
-        $globalsConfig = $bootstrap->getGlobalConfig();
-        $api_server = $globalsConfig->getApiServer();
+        return $this->post('/FileManagement/SearchOutboundClientFiles', $downloadSearch);
+    }
 
-        $content = 'content-type: application/json';
-        $bearer = 'authorization: Bearer ' . $token;
-        $headers = [
-            $content,
-            $bearer
-         ];
+    /**
+     * Get a file for download by object ID.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getFileForDownload(string $objectId): array
+    {
+        return $this->get('/FileManagement/GetFileForDownload', ['id' => $objectId]);
+    }
 
+    /**
+     * Get eligibility result by originating system ID.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getEligibilityResult(string $originatingSystemId): array
+    {
+        return $this->get('/api/Eligibility/v1/GetEligibilityRequest', [
+            'originatingSystemId' => $originatingSystemId,
+        ]);
+    }
 
-        $url = $api_server . "/api/SharpRevenue/v1/RunSharpRevenue";
-        $payload = json_encode($eligibility, JSON_UNESCAPED_SLASHES);
+    /**
+     * Get a SharpRevenue visit result by claimRevResultId.
+     *
+     * Used to poll for async results (e.g. coverage discovery).
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function getSharpRevenueVisit(string $claimRevResultId): array
+    {
+        return $this->get('/api/SharpRevenue/v1/GetEligibilityVisit', [
+            'sharpRevenueRtEligibilityObjectId' => $claimRevResultId,
+        ]);
+    }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    /**
+     * Upload an eligibility request.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function uploadEligibility(object $eligibility): array
+    {
+        return $this->post('/api/SharpRevenue/v1/RunSharpRevenue', $eligibility);
+    }
 
-        $result = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+    /**
+     * Ask an AI question about an eligibility response.
+     *
+     * The API streams back a JSON array of chunks. This method collects the
+     * full response and concatenates the text parts into a single string.
+     *
+     * @return string The AI-generated answer text
+     * @throws ClaimRevApiException on API error
+     */
+    public function askEligibilityQuestion(string $sharpRevenueObjectId, string $question, ?string $payerCode = null): string
+    {
+        $payload = (object) [
+            'sharpRevenueObjectId' => $sharpRevenueObjectId,
+            'question' => $question,
+            'payerCode' => $payerCode,
+            'model' => null,
+        ];
 
-        $data = json_decode($result);
-
-        if ($httpcode != 200) {
-            return false;
+        try {
+            $response = $this->client->request('POST', '/api/SharpRevenue/v1/AskEligibilityQuestion', [
+                'json' => $payload,
+                'headers' => array_merge($this->getAuthHeaders(), [
+                    'Accept' => 'text/event-stream',
+                ]),
+                'timeout' => 120,
+            ]);
+        } catch (GuzzleException $e) {
+            throw new ClaimRevApiException(
+                'ClaimRev API request failed: ' . $e->getMessage(),
+                0,
+                '',
+                '/api/SharpRevenue/v1/AskEligibilityQuestion',
+                $e
+            );
         }
 
-        return $data;
+        $statusCode = $response->getStatusCode();
+        if ($statusCode !== 200) {
+            throw new ClaimRevApiException(
+                "ClaimRev API returned HTTP {$statusCode}",
+                $statusCode,
+                (string) $response->getBody(),
+                '/api/SharpRevenue/v1/AskEligibilityQuestion'
+            );
+        }
+
+        $body = (string) $response->getBody();
+        $chunks = json_decode($body, true);
+        if (!is_array($chunks)) {
+            return $body;
+        }
+
+        // Concatenate text from all chunks: candidates[0].content.parts[0].text
+        $text = '';
+        foreach ($chunks as $chunk) {
+            $candidates = $chunk['candidates'] ?? [];
+            foreach ($candidates as $candidate) {
+                $parts = $candidate['content']['parts'] ?? [];
+                foreach ($parts as $part) {
+                    $text .= $part['text'] ?? '';
+                }
+            }
+        }
+
+        return $text;
+    }
+
+    /**
+     * Perform a GET request.
+     *
+     * @param array<string, string> $query
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    private function get(string $path, array $query = []): array
+    {
+        try {
+            $response = $this->client->request('GET', $path, [
+                'query' => $query,
+                'headers' => $this->getAuthHeaders(),
+            ]);
+        } catch (GuzzleException $e) {
+            throw new ClaimRevApiException(
+                'ClaimRev API request failed: ' . $e->getMessage(),
+                0,
+                '',
+                $path,
+                $e
+            );
+        }
+
+        $statusCode = $response->getStatusCode();
+        if ($statusCode !== 200) {
+            throw new ClaimRevApiException(
+                "ClaimRev API returned HTTP {$statusCode}",
+                $statusCode,
+                (string) $response->getBody(),
+                $path
+            );
+        }
+
+        return self::parseResponse($response);
+    }
+
+    /**
+     * Perform a POST request.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    private function post(string $path, object $payload): array
+    {
+        try {
+            $response = $this->client->request('POST', $path, [
+                'json' => $payload,
+                'headers' => $this->getAuthHeaders(),
+            ]);
+        } catch (GuzzleException $e) {
+            throw new ClaimRevApiException(
+                'ClaimRev API request failed: ' . $e->getMessage(),
+                0,
+                '',
+                $path,
+                $e
+            );
+        }
+
+        $statusCode = $response->getStatusCode();
+        if ($statusCode !== 200) {
+            throw new ClaimRevApiException(
+                "ClaimRev API returned HTTP {$statusCode}",
+                $statusCode,
+                (string) $response->getBody(),
+                $path
+            );
+        }
+
+        return self::parseResponse($response);
+    }
+
+    /**
+     * Get authorization headers for API requests.
+     *
+     * @return array<string, string>
+     */
+    private function getAuthHeaders(): array
+    {
+        return [
+            'Authorization' => 'Bearer ' . $this->accessToken,
+        ];
+    }
+
+    /**
+     * Parse a JSON response.
+     *
+     * @return array<string, mixed>
+     */
+    private static function parseResponse(ResponseInterface $response): array
+    {
+        $json = (string) $response->getBody();
+        if ($json === '') {
+            return [];
+        }
+        $decoded = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+        // API may return a scalar (e.g. a plain string); wrap it so callers
+        // always receive an array.
+        if (!is_array($decoded)) {
+            return ['value' => $decoded];
+        }
+        /** @var array<string, mixed> $decoded */
+        return $decoded;
     }
 }

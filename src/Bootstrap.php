@@ -7,7 +7,7 @@
  * writing modules that can be installed and used in OpenEMR.
  *
  * @package OpenEMR
- * @link    http://www.open-emr.org
+ * @link    https://www.open-emr.org
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
@@ -22,19 +22,18 @@ namespace OpenEMR\Modules\ClaimRevConnector;
 use OpenEMR\Common\Logging\SystemLogger;
 use OpenEMR\Common\Twig\TwigContainer;
 use OpenEMR\Core\Kernel;
+use OpenEMR\Core\OEGlobalsBag;
+use OpenEMR\Events\Appointments\AppointmentSetEvent;
 use OpenEMR\Events\Core\TwigEnvironmentEvent;
 use OpenEMR\Events\Globals\GlobalsInitializedEvent;
 use OpenEMR\Events\Main\Tabs\RenderEvent;
+use OpenEMR\Events\PatientDemographics\RenderEvent as pRenderEvent;
+use OpenEMR\Events\RestApiExtend\RestApiCreateEvent;
 use OpenEMR\Events\RestApiExtend\RestApiResourceServiceEvent;
 use OpenEMR\Events\RestApiExtend\RestApiScopeEvent;
-use OpenEMR\Services\Globals\GlobalSetting;
 use OpenEMR\Menu\MenuEvent;
-use OpenEMR\Events\RestApiExtend\RestApiCreateEvent;
-use OpenEMR\Events\PatientDemographics\RenderEvent as pRenderEvent;
-use OpenEMR\Events\Appointments\AppointmentSetEvent;
-
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevRteService;
-
+use OpenEMR\Services\Globals\GlobalSetting;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Twig\Error\LoaderError;
 use Twig\Loader\FilesystemLoader;
@@ -43,10 +42,7 @@ class Bootstrap
 {
     const MODULE_INSTALLATION_PATH = "/interface/modules/custom_modules/";
     const MODULE_NAME = "oe-module-claimrev-connect";
-    /**
-     * @var EventDispatcherInterface The object responsible for sending and subscribing to events through the OpenEMR system
-     */
-    private $eventDispatcher;
+    const MODULE_VERSION = "1.0.0";
 
     /**
      * @var GlobalConfig Holds our module global configuration values that can be used throughout the module.
@@ -68,8 +64,14 @@ class Bootstrap
      */
     private $logger;
 
-    public function __construct(EventDispatcherInterface $eventDispatcher, ?Kernel $kernel = null)
-    {
+    /**
+     * @param EventDispatcherInterface $eventDispatcher The object responsible for sending and subscribing to events through the OpenEMR system
+     * @param ?Kernel $kernel
+     */
+    public function __construct(
+        private readonly EventDispatcherInterface $eventDispatcher,
+        ?Kernel $kernel = null
+    ) {
         global $GLOBALS;
 
         if (empty($kernel)) {
@@ -83,7 +85,6 @@ class Bootstrap
         $this->twig = $twigEnv;
 
         $this->moduleDirectoryName = basename(dirname(__DIR__));
-        $this->eventDispatcher = $eventDispatcher;
 
         // we inject our globals value.
         $this->globalsConfig = new GlobalConfig($GLOBALS);
@@ -93,10 +94,26 @@ class Bootstrap
     public function subscribeToEvents()
     {
         $this->addGlobalSettings();
+        $this->registerMenuItems();
 
         // we only add the rest of our event listeners and configuration if we have been fully setup and configured
         if ($this->globalsConfig->isConfigured()) {
-            $this->registerMenuItems();
+            // Ensure the core SFTP global is enabled so claims flow through
+            // the x12_remote_tracker table where our background service picks them up.
+            // Without this, users must manually check "Automatically SFTP Claims To X12 Partner"
+            // in Globals for ClaimRev to work.
+            if ($this->globalsConfig->getGlobalSetting(GlobalConfig::CONFIG_AUTO_SEND_CLAIM_FILES)) {
+                $GLOBALS['auto_sftp_claims_to_x12_partner'] = true;
+                // Persist to the database and activate the X12_SFTP background service
+                // so claims flow through the x12_remote_tracker table.
+                $row = sqlQuery("SELECT gl_value FROM globals WHERE gl_name = 'auto_sftp_claims_to_x12_partner'");
+                if (empty($row['gl_value'])) {
+                    sqlStatement("UPDATE globals SET gl_value = '1' WHERE gl_name = 'auto_sftp_claims_to_x12_partner'");
+                    // Activate the X12_SFTP background service (same as what edit_globals.php does)
+                    sqlStatement("UPDATE background_services SET active = 1, execute_interval = 1 WHERE name = 'X12_SFTP'");
+                }
+            }
+
             $this->registerTemplateEvents();
             $this->subscribeToApiEvents();
             $this->registerDemographicsEvents();
@@ -115,7 +132,7 @@ class Bootstrap
 
     public function addGlobalSettings()
     {
-        $this->eventDispatcher->addListener(GlobalsInitializedEvent::EVENT_HANDLE, [$this, 'addGlobalSettingsSection']);
+        $this->eventDispatcher->addListener(GlobalsInitializedEvent::EVENT_HANDLE, $this->addGlobalSettingsSection(...));
     }
 
     public function addGlobalSettingsSection(GlobalsInitializedEvent $event)
@@ -129,7 +146,7 @@ class Bootstrap
         $settings = $this->globalsConfig->getGlobalSettingSectionConfiguration();
 
         foreach ($settings as $key => $config) {
-            $value = $GLOBALS[$key] ?? $config['default'];
+            $value = OEGlobalsBag::getInstance()->get($key) ?? $config['default'];
             $service->appendToSection(
                 $section,
                 $key,
@@ -148,14 +165,14 @@ class Bootstrap
     public function registerDemographicsEvents()
     {
         if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_ELIGIBILITY_CARD)) {
-            $this->eventDispatcher->addListener(pRenderEvent::EVENT_SECTION_LIST_RENDER_AFTER, [$this, 'renderEligibilitySection']);
+            $this->eventDispatcher->addListener(pRenderEvent::EVENT_SECTION_LIST_RENDER_AFTER, $this->renderEligibilitySection(...));
         }
     }
 
     public function registerEligibilityEvents()
     {
         if ($this->getGlobalConfig()->getGlobalSetting(GlobalConfig::CONFIG_ENABLE_REALTIME_ELIGIBILITY)) {
-            $this->eventDispatcher->addListener(AppointmentSetEvent::EVENT_HANDLE, [$this, 'renderAppointmentSetEvent']);
+            $this->eventDispatcher->addListener(AppointmentSetEvent::EVENT_HANDLE, $this->renderAppointmentSetEvent(...));
         }
     }
     public function renderAppointmentSetEvent(AppointmentSetEvent $event)
@@ -207,7 +224,7 @@ class Bootstrap
      */
     public function registerTemplateEvents()
     {
-        $this->eventDispatcher->addListener(TwigEnvironmentEvent::EVENT_CREATED, [$this, 'addTemplateOverrideLoader']);
+        $this->eventDispatcher->addListener(TwigEnvironmentEvent::EVENT_CREATED, $this->addTemplateOverrideLoader(...));
     }
 
     /**
@@ -249,7 +266,7 @@ class Bootstrap
              * @global $eventDispatcher @see ModulesApplication::loadCustomModule
              * @global $module @see ModulesApplication::loadCustomModule
              */
-            $this->eventDispatcher->addListener(MenuEvent::MENU_UPDATE, [$this, 'addCustomModuleMenuItem']);
+            $this->eventDispatcher->addListener(MenuEvent::MENU_UPDATE, $this->addCustomModuleMenuItem(...));
         }
     }
 

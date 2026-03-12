@@ -7,16 +7,19 @@
  * writing modules that can be installed and used in OpenEMR.
  *
  * @package OpenEMR
- * @link    http://www.open-emr.org
+ * @link    https://www.open-emr.org
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
+ * @author    Michael A. Smith <michael@opencoreemr.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
+ * @copyright Copyright (c) 2026 OpenCoreEMR Inc <https://opencoreemr.com/>
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-use OpenEMR\Common\Crypto\CryptoGen;
+use OpenEMR\BC\ServiceContainer;
+use OpenEMR\Common\Crypto\CryptoInterface;
 use OpenEMR\Services\Globals\GlobalSetting;
 
 class GlobalConfig
@@ -36,33 +39,38 @@ class GlobalConfig
     public const CONFIG_ENABLE_RESULTS_ELIGIBILITY = "oe_claimrev_eligibility_results_age";
     public const CONFIG_ENABLE_AUTO_SEND_ELIGIBILITY = "oe_claimrev_send_eligibility";
     public const CONFIG_X12_PARTNER_NAME = "oe_claimrev_x12_partner_name";
-    private $globalsArray;
+    public const CONFIG_ENABLE_WATCHDOG = "oe_claimrev_enable_watchdog";
+    public const CONFIG_ENABLE_NOTIFICATIONS = "oe_claimrev_enable_notifications";
+    public const CONFIG_NOTIFICATION_RECIPIENT = "oe_claimrev_notification_recipient";
+    public const CONFIG_BENEFIT_CODE_FILTER = "oe_claimrev_benefit_code_filter";
+    public const CONFIG_OPTION_PORTAL_URL = "oe_claimrev_config_portal_url";
+    public const CONFIG_OPTION_DEV_API_URL = 'oe_claimrev_config_dev_api_url';
+    public const CONFIG_OPTION_DEV_SCOPE = 'oe_claimrev_config_dev_scope';
+    public const CONFIG_OPTION_DEV_AUTHORITY = 'oe_claimrev_config_dev_authority';
 
-    /**
-     * @var CryptoGen
-     */
-    private $cryptoGen;
+    private readonly CryptoInterface $cryptoGen;
 
-    public function __construct(array $globalsArray)
+    public function __construct(private array $globalsArray)
     {
-        $this->globalsArray = $globalsArray;
-        $this->cryptoGen = new CryptoGen();
+        $this->cryptoGen = ServiceContainer::getCrypto();
     }
 
     /**
      * Returns true if all of the settings have been configured.  Otherwise it returns false.
-     *
-     * @return bool
      */
-    public function isConfigured()
+    public function isConfigured(): bool
     {
-        // $keys = [self::CONFIG_OPTION_TEXT, self::CONFIG_OPTION_ENCRYPTED];
-        // foreach ($keys as $key) {
-        //     $value = $this->getGlobalSetting($key);
-        //     if (empty($value)) {
-        //         return false;
-        //     }
-        // }
+        $requiredKeys = [
+            self::CONFIG_OPTION_ENVIRONMENT,
+            self::CONFIG_OPTION_CLIENTID,
+            self::CONFIG_OPTION_CLIENTSECRET,
+        ];
+        foreach ($requiredKeys as $key) {
+            $value = $this->getGlobalSetting($key);
+            if ($value === null || $value === '') {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -76,34 +84,85 @@ class GlobalConfig
         return $this->cryptoGen->decryptStandard($encryptedValue);
     }
 
-    public function getClientScope()
+    private const URL_CONFIGS = [
+        'scope' => [
+            'P' => 'https://portalclaimrev.onmicrosoft.com/portal/api/.default',
+            'S' => 'https://stagingclaimrevcom.onmicrosoft.com/portal/api/.default',
+        ],
+        'authority' => [
+            'P' => 'https://portalclaimrev.b2clogin.com/portalclaimrev.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token',
+            'S' => 'https://stagingclaimrevcom.b2clogin.com/stagingclaimrevcom.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token',
+        ],
+        'api_server' => [
+            'P' => 'https://api.claimrev.com',
+            'S' => 'https://testapi.claimrev.com',
+        ],
+        'portal' => [
+            'P' => 'https://portal.claimrev.com',
+            'S' => 'https://testportal.claimrev.com',
+        ],
+    ];
+
+    private const DEV_URL_CONFIG_KEYS = [
+        'scope' => self::CONFIG_OPTION_DEV_SCOPE,
+        'authority' => self::CONFIG_OPTION_DEV_AUTHORITY,
+        'api_server' => self::CONFIG_OPTION_DEV_API_URL,
+    ];
+
+    /**
+     * @param 'scope'|'authority'|'api_server' $urlType
+     * @return non-empty-string
+     * @throws ModuleNotConfiguredException if URL is not configured for the current environment
+     */
+    private function getEnvironmentUrl(string $urlType): string
     {
-        if ($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "S") {
-            return "https://stagingclaimrevcom.onmicrosoft.com/portal/api/.default";
-        } elseif ($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D") {
-            return "https://claimrevportaldevelopment.onmicrosoft.com/portal/api/.default";
+        $env = $this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT);
+        $env = is_string($env) ? $env : 'P';
+
+        $url = ($env === 'D')
+            ? $this->getGlobalSetting(self::DEV_URL_CONFIG_KEYS[$urlType])
+            : (self::URL_CONFIGS[$urlType][$env] ?? null);
+
+        if (!is_string($url) || $url === '') {
+            throw new ModuleNotConfiguredException("ClaimRev {$urlType} URL not configured for environment '{$env}'");
         }
-        return "https://portalclaimrev.onmicrosoft.com/portal/api/.default";
+
+        return $url;
     }
 
-    public function getClientAuthority()
+    /** @return non-empty-string */
+    public function getClientScope(): string
     {
-        if ($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "S") {
-            return "https://stagingclaimrevcom.b2clogin.com/stagingclaimrevcom.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";
-        } elseif ($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D") {
-            return "https://claimrevportaldevelopment.b2clogin.com/claimrevportaldevelopment.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";
-        }
-        return "https://portalclaimrev.b2clogin.com/portalclaimrev.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token";
+        return $this->getEnvironmentUrl('scope');
     }
 
-    public function getApiServer()
+    /** @return non-empty-string */
+    public function getClientAuthority(): string
     {
-        if ($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "S") {
-            return "https://testapi.claimrev.com";
-        } elseif ($this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT) == "D") {
-            return "https://9a89-174-128-131-22.ngrok.io";
+        return $this->getEnvironmentUrl('authority');
+    }
+
+    /** @return non-empty-string */
+    public function getApiServer(): string
+    {
+        return $this->getEnvironmentUrl('api_server');
+    }
+
+    /**
+     * Get the ClaimRev portal URL for claim editor links.
+     */
+    public function getPortalUrl(): string
+    {
+        $override = $this->getGlobalSetting(self::CONFIG_OPTION_PORTAL_URL);
+        if (is_string($override) && $override !== '') {
+            return rtrim($override, '/');
         }
-        return "https://api.claimrev.com";
+
+        try {
+            return $this->getEnvironmentUrl('portal');
+        } catch (ModuleNotConfiguredException) {
+            return 'https://portal.claimrev.com';
+        }
     }
 
 
@@ -111,25 +170,6 @@ class GlobalConfig
     public function getAutoSendFiles()
     {
         return $this->getGlobalSetting(self::CONFIG_AUTO_SEND_CLAIM_FILES);
-    }
-
-
-
-
-    public function getTextOption()
-    {
-        return $this->getGlobalSetting(self::CONFIG_OPTION_TEXT);
-    }
-
-    /**
-     * Returns our decrypted value if we have one, or false if the value could not be decrypted or is empty.
-     *
-     * @return bool|string
-     */
-    public function getEncryptedOption()
-    {
-        $encryptedValue = $this->getGlobalSetting(self::CONFIG_OPTION_ENCRYPTED);
-        return $this->cryptoGen->decryptStandard($encryptedValue);
     }
 
     public function getGlobalSetting($settingKey)
@@ -141,78 +181,127 @@ class GlobalConfig
     {
         $settings = [
             self::CONFIG_OPTION_ENVIRONMENT => [
-                'title' => 'ClaimRev Environment (P=Production)'
-                ,'description' => 'The system you connect to. P for production'
-                ,'type' => GlobalSetting::DATA_TYPE_TEXT
-                ,'default' => 'P'
-            ]
-            ,self::CONFIG_OPTION_CLIENTID => [
-                'title' => 'Client ID'
-                ,'description' => 'Contact ClaimRev for the client ID'
-                ,'type' => GlobalSetting::DATA_TYPE_TEXT
-                ,'default' => ''
-            ]
-            ,self::CONFIG_OPTION_CLIENTSECRET => [
-                'title' => 'ClaimRev Client Secret'
-                ,'description' => 'Contact ClaimRev for this value'
-                ,'type' => GlobalSetting::DATA_TYPE_ENCRYPTED
-                ,'default' => ''
-            ]
-            ,self::CONFIG_X12_PARTNER_NAME => [
-                'title' => 'X12 Partner Name'
-                ,'description' => 'Name of the X12 Partner Record'
-                ,'type' => GlobalSetting::DATA_TYPE_TEXT
-                ,'default' => 'ClaimRev'
-            ]
-            ,self::CONFIG_SERVICE_TYPE_CODES => [
-                'title' => 'Eligibility Service Type Codes'
-                ,'description' => 'Comma Separated List of Service Type Codes'
-                ,'type' => GlobalSetting::DATA_TYPE_TEXT
-                ,'default' => '30'
-            ]
-            ,self::CONFIG_AUTO_SEND_CLAIM_FILES => [
-                'title' => 'Auto Send Claim Files'
-                ,'description' => 'Send Claim Files to ClaimRev automatically'
-                ,'type' => GlobalSetting::DATA_TYPE_BOOL
-                ,'default' => ''
-            ]
-            ,self::CONFIG_ENABLE_MENU => [
-                'title' => 'Add module menu item'
-                ,'description' => 'Adding a menu item to the system (requires logging out and logging in again)'
-                ,'type' => GlobalSetting::DATA_TYPE_BOOL
-                ,'default' => ''
-            ]
-            ,self::CONFIG_ENABLE_ELIGIBILITY_CARD => [
-                'title' => 'Add ClaimRev Eligibility Card To Patient Dashboard'
-                ,'description' => 'Adds the ClaimRev Eligibility Card To Patient Dashboard'
-                ,'type' => GlobalSetting::DATA_TYPE_BOOL
-                ,'default' => ''
-            ]
-            ,self::CONFIG_USE_FACILITY_FOR_ELIGIBILITY => [
-                'title' => 'Use Facility for Eligibility'
-                ,'description' => 'Information requester will be facility rather than provider'
-                ,'type' => GlobalSetting::DATA_TYPE_BOOL
-                ,'default' => ''
-            ]
-            ,self::CONFIG_ENABLE_REALTIME_ELIGIBILITY => [
-                'title' => 'Turn on Real-Time Eligibility'
-                ,'description' => 'Enables eligibility checks on patients eligibility when an appointment is created'
-                ,'type' => GlobalSetting::DATA_TYPE_BOOL
-                ,'default' => ''
-            ]
-            ,self::CONFIG_ENABLE_RESULTS_ELIGIBILITY => [
-                'title' => 'Eligibility Age To Stale'
-                ,'description' => 'THis is the number of days to consider eligibility stale'
-                ,'type' => GlobalSetting::DATA_TYPE_TEXT
-                ,'default' => ''
-            ]
-            ,self::CONFIG_ENABLE_AUTO_SEND_ELIGIBILITY => [
-                'title' => 'Turn on Eligibility Send Service'
-                ,'description' => 'Enables the sending of eligibility json to ClaimRev'
-                ,'type' => GlobalSetting::DATA_TYPE_BOOL
-                ,'default' => ''
-            ]
-        ];//
+                'title' => 'ClaimRev Environment',
+                'description' => 'Leave as P for production. Only change to D if directed by ClaimRev support.',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => 'P',
+            ],
+            self::CONFIG_OPTION_CLIENTID => [
+                'title' => 'Client ID',
+                'description' => 'Available in the ClaimRev Portal under Client Connect',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_OPTION_CLIENTSECRET => [
+                'title' => 'ClaimRev Client Secret',
+                'description' => 'Contact ClaimRev for this value',
+                'type' => GlobalSetting::DATA_TYPE_ENCRYPTED,
+                'default' => '',
+            ],
+            self::CONFIG_X12_PARTNER_NAME => [
+                'title' => 'X12 Partner Name',
+                'description' => 'Name of the X12 Partner Record',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => 'ClaimRev',
+            ],
+            self::CONFIG_SERVICE_TYPE_CODES => [
+                'title' => 'Eligibility Service Type Codes',
+                'description' => 'Comma Separated List of Service Type Codes',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_BENEFIT_CODE_FILTER => [
+                'title' => 'Benefit Code Filter',
+                'description' => 'Comma separated benefit information codes to display (e.g. 1,6,A,B,C). Leave blank to show all. Filtered locally only - does not affect what is sent to ClaimRev.',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_AUTO_SEND_CLAIM_FILES => [
+                'title' => 'Auto Send Claim Files',
+                'description' => 'Send Claim Files to ClaimRev automatically',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '',
+            ],
+            self::CONFIG_ENABLE_MENU => [
+                'title' => 'Add module menu item',
+                'description' => 'Adding a menu item to the system (requires logging out and logging in again)',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '',
+            ],
+            self::CONFIG_ENABLE_ELIGIBILITY_CARD => [
+                'title' => 'Add ClaimRev Eligibility Card To Patient Dashboard',
+                'description' => 'Adds the ClaimRev Eligibility Card To Patient Dashboard',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '',
+            ],
+            self::CONFIG_USE_FACILITY_FOR_ELIGIBILITY => [
+                'title' => 'Use Facility for Eligibility',
+                'description' => 'Information requester will be facility rather than provider',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '',
+            ],
+            self::CONFIG_ENABLE_REALTIME_ELIGIBILITY => [
+                'title' => 'Turn on Real-Time Eligibility',
+                'description' => 'Enables eligibility checks on patients eligibility when an appointment is created',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '',
+            ],
+            self::CONFIG_ENABLE_RESULTS_ELIGIBILITY => [
+                'title' => 'Eligibility Age To Stale',
+                'description' => 'THis is the number of days to consider eligibility stale',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_ENABLE_AUTO_SEND_ELIGIBILITY => [
+                'title' => 'Turn on Eligibility Send Service',
+                'description' => 'Enables the sending of eligibility json to ClaimRev',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '',
+            ],
+            self::CONFIG_ENABLE_NOTIFICATIONS => [
+                'title' => 'Enable ClaimRev Notifications',
+                'description' => 'Poll ClaimRev for account notifications and deliver them to OpenEMR user messages',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '1',
+            ],
+            self::CONFIG_NOTIFICATION_RECIPIENT => [
+                'title' => 'Notification Recipient Username(s)',
+                'description' => 'OpenEMR username(s) to receive ClaimRev notifications. Separate multiple with semicolons (e.g. admin;biller1;biller2).',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => 'admin',
+            ],
+            self::CONFIG_ENABLE_WATCHDOG => [
+                'title' => 'Enable Service Watchdog',
+                'description' => 'Automatically resets ClaimRev background services that get stuck. Recommended to leave enabled.',
+                'type' => GlobalSetting::DATA_TYPE_BOOL,
+                'default' => '1',
+            ],
+            // --- Override settings (auto-configured for production, configurable for alternate identity providers) ---
+            self::CONFIG_OPTION_PORTAL_URL => [
+                'title' => 'Portal URL Override',
+                'description' => 'Auto-configured for production. Override only if using a custom portal URL.',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_OPTION_DEV_API_URL => [
+                'title' => 'API Server URL Override',
+                'description' => 'Auto-configured for production. Override to use a different API server or identity provider.',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_OPTION_DEV_SCOPE => [
+                'title' => 'OAuth Scope Override',
+                'description' => 'Auto-configured for production. Override when switching identity providers (e.g. Entra ID External, Zitadel).',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_OPTION_DEV_AUTHORITY => [
+                'title' => 'OAuth Authority URL Override',
+                'description' => 'Auto-configured for production. Override when switching identity providers (e.g. Entra ID External, Zitadel).',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+        ];
         return $settings;
     }
 }

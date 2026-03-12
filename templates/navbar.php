@@ -3,7 +3,7 @@
 /**
  *
  * @package OpenEMR
- * @link    http://www.open-emr.org
+ * @link    https://www.open-emr.org
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
@@ -32,6 +32,11 @@
                 echo "active";
                                 } ?>">
                 <a class="nav-link" href="era.php"><?php echo xlt("ERAs"); ?></a>
+            </li>
+            <li class="nav-item <?php if ($tab == "appointments") {
+                echo "active";
+                                } ?>" >
+                <a class="nav-link" href="appointments.php"><?php echo xlt("Appointments"); ?></a>
             </li>
             <li class="nav-item <?php if ($tab == "x12") {
                 echo "active";

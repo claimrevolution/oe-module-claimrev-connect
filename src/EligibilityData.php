@@ -3,7 +3,7 @@
 /**
  *
  * @package OpenEMR
- * @link    http://www.open-emr.org
+ * @link    https://www.open-emr.org
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
@@ -30,7 +30,7 @@ class EligibilityData
                 from openemr_postcalendar_events
                 WHERE pc_eid = ?
             LIMIT 1";
-        $sqlarr = array($eid);
+        $sqlarr = [$eid];
         $result = sqlStatement($sql, $sqlarr);
         if (sqlNumRows($result) == 1) {
             foreach ($result as $row) {
@@ -43,13 +43,13 @@ class EligibilityData
     public static function removeEligibilityCheck($pid, $payer_responsibility)
     {
         $sql = "DELETE FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? ";
-        $sqlarr = array($pid,$payer_responsibility);
+        $sqlarr = [$pid,$payer_responsibility];
         $result = sqlStatement($sql, $sqlarr);
     }
     public static function getEligibilityCheckByStatus($status)
     {
         $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ?";
-        $sqlarr = array($status);
+        $sqlarr = [$status];
 
         $result = sqlStatement($sql, $sqlarr);
         return $result;
@@ -57,7 +57,7 @@ class EligibilityData
     public static function getEligibilityResults($status, $minutes)
     {
         $sql = "SELECT * FROM mod_claimrev_eligibility WHERE status = ? AND TIMESTAMPDIFF(MINUTE,last_checked,NOW()) >= ?";
-        $sqlarr = array($status,$minutes);
+        $sqlarr = [$status,$minutes];
         $result = sqlStatement($sql, $sqlarr);
         return $result;
     }
@@ -65,15 +65,31 @@ class EligibilityData
     {
         $pr = ValueMapping::mapPayerResponsibility($payer_responsibility);
         $sql = "SELECT status, coalesce(last_checked,create_date) as last_update,response_json,eligibility_json,individual_json,response_message  FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? LIMIT 1";
-        $res = sqlStatement($sql, array($pid,$pr));
+        $res = sqlStatement($sql, [$pid,$pr]);
         return $res;
+    }
+
+    /**
+     * Get the existing eligibility record for merging.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function getExistingRecord($pid, $payer_responsibility)
+    {
+        $pr = ValueMapping::mapPayerResponsibility($payer_responsibility);
+        $sql = "SELECT id, status, individual_json, response_json FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? LIMIT 1";
+        $res = sqlStatement($sql, [$pid, $pr]);
+        foreach ($res as $row) {
+            return $row;
+        }
+        return null;
     }
 
     public static function updateEligibilityRecord($id, $status, $request_json, $response_json, $updateLastChecked, $responseMessage, $raw271, $eligibility_json, $individual_json)
     {
         $sql = "UPDATE mod_claimrev_eligibility SET status = ? ";
 
-        $sqlarr = array($status);
+        $sqlarr = [$status];
         if ($updateLastChecked) {
             $sql .= ",last_checked = NOW() ";
         }
@@ -121,7 +137,7 @@ class EligibilityData
                 inner join insurance_companies as c ON (c.id = i.provider)
                 where i.pid = ?";
 
-            $ary = array($pid);
+            $ary = [$pid];
 
         if ($pr != "") {
             $query .= " AND i.type = ?";
@@ -164,11 +180,11 @@ class EligibilityData
                     LEFT JOIN users AS d on
                         p.providerID = d.id
                     INNER JOIN facility AS f on
-                        f.id = d.facility_id	
+                        f.id = d.facility_id
                     WHERE p.pid = ?
                     LIMIT 1";
 
-        $ary = array($pid);
+        $ary = [$pid];
         $res = sqlStatement($query, $ary);
 
         return $res;
@@ -185,7 +201,7 @@ class EligibilityData
                     WHERE f.id = ?
                     LIMIT 1";
 
-        $ary = array($fid);
+        $ary = [$fid];
         $result = sqlStatement($query, $ary);
 
         if (sqlNumRows($result) == 1) {
@@ -223,7 +239,7 @@ class EligibilityData
                     WHERE p.pid = ?
                     LIMIT 1";
 
-        $ary = array($pid);
+        $ary = [$pid];
         $result = sqlStatement($query, $ary);
 
         if (sqlNumRows($result) == 1) {
@@ -246,7 +262,7 @@ class EligibilityData
                     WHERE d.id = ?
                     LIMIT 1";
 
-        $ary = array($pid);
+        $ary = [$pid];
         $result = sqlStatement($query, $ary);
 
         if (sqlNumRows($result) == 1) {
@@ -258,13 +274,29 @@ class EligibilityData
         return null;
     }
 
+    /**
+     * Get the eligibility record ID and raw271 for a patient + payer responsibility.
+     *
+     * @return array{id: int|string, raw271: string}|null
+     */
+    public static function getRaw271($pid, $payerResponsibility)
+    {
+        $pr = ValueMapping::mapPayerResponsibility($payerResponsibility);
+        $sql = "SELECT id, raw271 FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? AND raw271 IS NOT NULL AND raw271 != '' LIMIT 1";
+        $res = sqlStatement($sql, [$pid, $pr]);
+        foreach ($res as $row) {
+            return $row;
+        }
+        return null;
+    }
+
     public static function getInsuranceData($pid = 0, $pr = "")
     {
         $query = "SELECT
 			i.type as payer_responsibility
 			FROM insurance_data AS i
             WHERE i.pid = ? ";
-        $ary = array($pid);
+        $ary = [$pid];
 
         if ($pr != "") {
             $query .= " AND i.type = ?";

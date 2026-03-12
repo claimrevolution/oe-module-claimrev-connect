@@ -3,25 +3,25 @@
 /**
  *
  * @package OpenEMR
- * @link    http://www.open-emr.org
+ * @link    https://www.open-emr.org
  *
  * @author    Brad Sharp <brad.sharp@claimrev.com>
+ * @author    Michael A. Smith <michael@opencoreemr.com>
  * @copyright Copyright (c) 2022 Brad Sharp <brad.sharp@claimrev.com>
+ * @copyright Copyright (c) 2026 OpenCoreEMR Inc <https://opencoreemr.com/>
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
+use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\EligibilityData;
-use OpenEMR\Modules\ClaimRevConnector\EligibilityInquiryRequest;
-use OpenEMR\Modules\ClaimRevConnector\InformationReceiver;
-use OpenEMR\Modules\ClaimRevConnector\SubscriberPatientEligibilityRequest;
-use OpenEMR\Modules\ClaimRevConnector\RevenueToolsRequest;
 use OpenEMR\Modules\ClaimRevConnector\RevenueToolsPayer;
+use OpenEMR\Modules\ClaimRevConnector\RevenueToolsRequest;
 
 class EligibilityObjectCreator
 {
-    public static function buildRevenueToolsRequest($pid, $pr, $eventDate = null, $providerId = null, $facilityId = null)
+    public static function buildRevenueToolsRequest($pid, $pr, $eventDate = null, $providerId = null, $facilityId = null, $productsToRun = null)
     {
         $facilityName = "";
         $facilityState = "";
@@ -29,10 +29,12 @@ class EligibilityObjectCreator
         $providerNpi = "";
         $providerPinCode = "";
 
-        $useFacility = $GLOBALS['oe_claimrev_config_use_facility_for_eligibility'];
-        $serviceTypeCodes = $GLOBALS['oe_claimrev_config_service_type_codes'];
+        $useFacility = OEGlobalsBag::getInstance()->get('oe_claimrev_config_use_facility_for_eligibility');
+        $serviceTypeCodes = OEGlobalsBag::getInstance()->get('oe_claimrev_config_service_type_codes');
         $accountNumber = "";
-        $productsToRun = array(1);
+        if (empty($productsToRun)) {
+            $productsToRun = [1];
+        }
 
 
         $revenueTools = new RevenueToolsRequest();
@@ -40,7 +42,7 @@ class EligibilityObjectCreator
         $revenueTools->accountNumber = $accountNumber;
         $revenueTools->payerResponsibility = $pr;
         $revenueTools->includeCredit = false;
-        $revenueTools->serviceTypeCodes = explode(",", $serviceTypeCodes);
+        $revenueTools->serviceTypeCodes = explode(",", (string) $serviceTypeCodes);
         $revenueTools->productsToRun = $productsToRun;
 
 
@@ -100,14 +102,14 @@ class EligibilityObjectCreator
         }
         return $revenueTools;
     }
-    public static function buildObject($pid, $payer_responsibility, $eventDate = null, $facilityId = null, $providerId = null)
+    public static function buildObject($pid, $payer_responsibility, $eventDate = null, $facilityId = null, $providerId = null, $productsToRun = null)
     {
-        $results = array();
+        $results = [];
         $resultSubscribers = EligibilityData::getSubscriberData($pid, $payer_responsibility);
         foreach ($resultSubscribers as $subscriberRow) {
-            $payers = array();
+            $payers = [];
             $pr = ValueMapping::mapPayerResponsibility($subscriberRow['type']);
-            $revenueTools = EligibilityObjectCreator::buildRevenueToolsRequest($pid, $pr, $eventDate, $providerId, $facilityId);
+            $revenueTools = EligibilityObjectCreator::buildRevenueToolsRequest($pid, $pr, $eventDate, $providerId, $facilityId, $productsToRun);
             $payer = new RevenueToolsPayer();
             $payer->payerNumber = $subscriberRow['payerId'];
             $payer->payerName = $subscriberRow['payer_name'];
@@ -120,8 +122,8 @@ class EligibilityObjectCreator
 
             array_push($payers, $payer);
             $revenueTools->payers = $payers;
+            array_push($results, $revenueTools);
         }
-        array_push($results, $revenueTools);
 
         return $results;
     }
@@ -129,29 +131,29 @@ class EligibilityObjectCreator
     public static function saveSingleToDatabase($req, $pid)
     {
 
-        $stale_age = $GLOBALS['oe_claimrev_eligibility_results_age'];
+        $stale_age = OEGlobalsBag::getInstance()->get('oe_claimrev_eligibility_results_age');
         //status of re-check if results are still waiting on claimrev site
 
         //if it's greater than aged date then lets remove completely from the tables, the new one will handle it. We don't care about statuses
         $sql = "DELETE FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ? AND (datediff(now(),create_date) >= ? or status in('error','waiting','creating') ) ";
-        $sqlarr = array($pid,$req->payerResponsibility, $stale_age);
+        $sqlarr = [$pid,$req->payerResponsibility, $stale_age];
         $result = sqlStatement($sql, $sqlarr);
 
         $sql = "SELECT * FROM mod_claimrev_eligibility WHERE pid = ? AND payer_responsibility = ?";
-        $sqlarr = array($pid,$req->payerResponsibility);
+        $sqlarr = [$pid,$req->payerResponsibility];
         $result = sqlStatement($sql, $sqlarr);
         if (sqlNumRows($result) <= 0) {
             $status = "creating";
             $sql = "INSERT INTO mod_claimrev_eligibility (pid,payer_responsibility,status,create_date) VALUES(?,?,?,NOW())";
 
-            $sqlarr = array($pid,$req->payerResponsibility,$status);
+            $sqlarr = [$pid,$req->payerResponsibility,$status];
             $result = sqlInsert($sql, $sqlarr);
             $status = "waiting";
 
             $req->originatingSystemId = strval($result);
             $json = json_encode($req, true);
             $sql = "UPDATE mod_claimrev_eligibility SET request_json = ?, status = ? where id = ?";
-            $sqlarr = array($json,$status,$result);
+            $sqlarr = [$json,$status,$result];
             sqlStatement($sql, $sqlarr);
         }
     }
