@@ -20,8 +20,5 @@
     "php": ">=7.1",
     "symfony/event-dispatcher": "^4.4 || ^5.0 || ^6.0 || ^7.0",
     "nyholm/psr7": "^1.4"
-  },
-  "conflict": {
-    "openemr/openemr": "<6.0.0"
   }
 }
