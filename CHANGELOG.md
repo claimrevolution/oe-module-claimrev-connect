@@ -1,3 +1,21 @@
+# 2.1.3
+Cross-version compatibility and security hardening:
+- Read stored credentials with `CryptoGen::decryptStandard` instead of `decryptFromDatabase`. The newer helper was added to OE core in the 8.x line but does not exist on OE 7.x; reverting to `decryptStandard` lets the same module binary work on both branches.
+- Close findings from the external Aisle Analyzer security review of PR #11265: tighten IDOR and CSRF gaps on AJAX endpoints, refetch ERA and claim status server-side rather than trusting the browser to echo them back, and tighten property-access hardening on several response shapes.
+
+Test mode coverage extended to every gated page:
+- ERA tab and `EraDownload` short-circuit to mock data when test mode is enabled, gated by the global setting (the per-tab checkbox is removed).
+- Payment Advice tab reads the test-mode global directly; per-tab checkbox removed.
+- Reconciliation tab returns mock rows via `ReconciliationMockService`.
+- Eligibility Chat returns mock AI answers in test mode.
+- `claim_sync_status` and `claim_requeue` short-circuit cleanly without contacting the API.
+- README's test-mode coverage row documents every gated page.
+
+Maintenance:
+- Rector/PHPStan cleanups across the module.
+- Fix `STATUS_UPLOAD_ERROR` constant typo.
+- Miscellaneous narrowing of array/object access patterns flagged by PHPStan.
+
 # 2.1.2
 Bug fixes:
 - Send `serviceTypeCodes` as a JSON array (`List<string>`) instead of a comma-separated string. The ClaimRev API tightened request validation and started rejecting the old shape with HTTP 400, breaking Check Now eligibility requests. Empty configuration still asks for all benefits.
