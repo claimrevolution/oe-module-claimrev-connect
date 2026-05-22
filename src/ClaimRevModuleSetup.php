@@ -119,16 +119,17 @@ class ClaimRevModuleSetup
             . "WHERE gl_name = 'auto_sftp_claims_to_x12_partner' "
             . "AND (gl_value IS NULL OR gl_value = '')"
         );
-        // Activate X12_SFTP only when the service has never been scheduled
-        // (last_run IS NULL). On a fresh install that means an admin has
-        // never touched it and the documented module-enable behavior is to
-        // turn it on. After the service has run once we never flip it back
-        // to active here — an admin who deliberately disabled it (for
-        // compliance, network policy, etc.) is entitled to keep that
-        // setting across module re-enables.
+        // Activate X12_SFTP on module enable. Earlier code tried to gate this
+        // on `last_run IS NULL` to avoid re-flipping a service an admin had
+        // deliberately disabled, but the `background_services` table on OE 8.x
+        // master has no `last_run` column (only `next_run`), so the query
+        // throws. Re-enabling the module reactivates X12_SFTP — same as the
+        // shipped v1.x behavior. Re-do the "don't clobber admin choices"
+        // safeguard via a separate mechanism (module_install_flags row, or
+        // checking a different column) once we agree on the right one.
         QueryUtils::sqlStatementThrowException(
             "UPDATE background_services SET active = 1, execute_interval = 1 "
-            . "WHERE name = 'X12_SFTP' AND active = 0 AND last_run IS NULL"
+            . "WHERE name = 'X12_SFTP' AND active = 0"
         );
     }
 
