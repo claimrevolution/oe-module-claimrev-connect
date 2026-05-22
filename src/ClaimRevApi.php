@@ -12,6 +12,8 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 namespace OpenEMR\Modules\ClaimRevConnector;
 
 use GuzzleHttp\Client;
@@ -26,6 +28,18 @@ use SensitiveParameter;
  */
 readonly class ClaimRevApi
 {
+    /**
+     * Max seconds to wait on a TCP/TLS connect. Cloud Run cold starts can
+     * take ~60s before the first byte comes back, so give it room.
+     */
+    private const HTTP_CONNECT_TIMEOUT = 30;
+
+    /** Max seconds to wait for a full response after the connection is up. */
+    private const HTTP_TIMEOUT = 60;
+
+    /** OAuth token POST attempts (initial + retries). */
+    private const TOKEN_MAX_ATTEMPTS = 3;
+
     public function __construct(
         private ClientInterface $client,
         #[SensitiveParameter] private string $accessToken,
@@ -41,8 +55,12 @@ readonly class ClaimRevApi
     {
         // Use include (not include_once) so local vars are always set,
         // even if version.php was already loaded elsewhere in the request.
-        @include(OEGlobalsBag::getInstance()->get('fileroot') . "/version.php");
-        $oemrVersion = ($v_major ?? '?') . '.' . ($v_minor ?? '?') . '.' . ($v_patch ?? '?') . ($v_tag ?? '');
+        $fileroot = OEGlobalsBag::getInstance()->getString('fileroot');
+        @include($fileroot . "/version.php");
+        $oemrVersion = TypeCoerce::asString($v_major ?? '?') . '.'
+            . TypeCoerce::asString($v_minor ?? '?') . '.'
+            . TypeCoerce::asString($v_patch ?? '?')
+            . TypeCoerce::asString($v_tag ?? '');
 
         return [
             'X-Module-Version' => Bootstrap::MODULE_VERSION,
@@ -85,6 +103,8 @@ readonly class ClaimRevApi
                 'accept' => 'application/json',
                 'content-type' => 'application/json',
             ], self::getVersionHeaders()),
+            'connect_timeout' => self::HTTP_CONNECT_TIMEOUT,
+            'timeout' => self::HTTP_TIMEOUT,
         ]);
 
         return new self($client, $token);
@@ -101,21 +121,48 @@ readonly class ClaimRevApi
         string $scope,
         #[SensitiveParameter] string $clientSecret,
     ): string {
-        $client = new Client();
-        try {
-            $response = $client->request('POST', $authority, [
-                'form_params' => [
-                    'client_id' => $clientId,
-                    'scope' => $scope,
-                    'client_secret' => $clientSecret,
-                    'grant_type' => 'client_credentials',
-                ],
-            ]);
-        } catch (GuzzleException $e) {
+        $client = new Client([
+            'connect_timeout' => self::HTTP_CONNECT_TIMEOUT,
+            'timeout' => self::HTTP_TIMEOUT,
+        ]);
+        $params = [
+            'form_params' => [
+                'client_id' => $clientId,
+                'scope' => $scope,
+                'client_secret' => $clientSecret,
+                'grant_type' => 'client_credentials',
+            ],
+        ];
+
+        // The B2C token endpoint occasionally returns transient TLS resets or
+        // 5xx responses, especially when the client side is on a Cloud Run
+        // instance just waking up. Retry a couple of times with brief backoff
+        // so the user-facing "Check Now" doesn't bubble those up as errors.
+        $lastException = null;
+        for ($attempt = 1; $attempt <= self::TOKEN_MAX_ATTEMPTS; $attempt++) {
+            try {
+                $response = $client->request('POST', $authority, $params);
+                break;
+            } catch (GuzzleException $e) {
+                $lastException = $e;
+                if ($attempt === self::TOKEN_MAX_ATTEMPTS) {
+                    throw new ClaimRevAuthenticationException(
+                        'Failed to acquire ClaimRev access token after ' . self::TOKEN_MAX_ATTEMPTS . ' attempts: ' . $e->getMessage(),
+                        0,
+                        $e
+                    );
+                }
+                // Backoff: 200ms, 400ms.
+                usleep(200_000 * $attempt);
+            }
+        }
+
+        if (!isset($response)) {
+            // Defensive — the loop above either sets $response or throws.
             throw new ClaimRevAuthenticationException(
-                'Failed to acquire ClaimRev access token: ' . $e->getMessage(),
+                'Failed to acquire ClaimRev access token',
                 0,
-                $e
+                $lastException,
             );
         }
 
@@ -192,7 +239,7 @@ readonly class ClaimRevApi
             $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
             $globalsConfig = $bootstrap->getGlobalConfig();
             $apiServer = $globalsConfig->getApiServer();
-        } catch (\Throwable) {
+        } catch (\RuntimeException | \LogicException) {
             return false;
         }
 
@@ -213,6 +260,32 @@ readonly class ClaimRevApi
         } catch (GuzzleException) {
             return false;
         }
+    }
+
+    /**
+     * Search for payment advice / ERA claim-level payment info (paginated).
+     *
+     * @return array<string, mixed> Contains 'results' and 'totalRecords'
+     * @throws ClaimRevApiException on API error
+     */
+    public function searchPaymentInfo(object $search): array
+    {
+        return $this->post('/api/PaymentAdvice/v1/SearchPaymentInfo', $search);
+    }
+
+    /**
+     * Toggle the isWorked flag on a payment advice in ClaimRev.
+     *
+     * The API toggles the current value, so only call this when you want to flip it.
+     *
+     * @param array<string, mixed> $paymentAdvice The full ClaimPaymentAggregation object
+     * @return bool True if the toggle succeeded
+     * @throws ClaimRevApiException on API error
+     */
+    public function markPaymentAdviceWorked(array $paymentAdvice): bool
+    {
+        $this->post('/api/PaymentAdvice/v1/UpdateClaimPaymentAdviceIsWorked', (object) $paymentAdvice);
+        return true;
     }
 
     /**
@@ -245,7 +318,7 @@ readonly class ClaimRevApi
      */
     public function getClaimErrors(string $claimId): array
     {
-        return $this->get('/api/ClaimView/v1/GetClaimErrors', ['claimId' => $claimId]);
+        return self::asListOfRecords($this->get('/api/ClaimView/v1/GetClaimErrors', ['claimId' => $claimId]));
     }
 
     /**
@@ -256,7 +329,7 @@ readonly class ClaimRevApi
      */
     public function getClaimStatuses(): array
     {
-        return $this->get('/api/ClaimView/v1/GetClaimStatuses');
+        return self::asListOfRecords($this->get('/api/ClaimView/v1/GetClaimStatuses'));
     }
 
     /**
@@ -267,9 +340,30 @@ readonly class ClaimRevApi
      */
     public function getPortalNotifications(bool $isReadFilter = false): array
     {
-        return $this->get('/api/NotificationMgmt/v1/GetPortalNotifications', [
+        return self::asListOfRecords($this->get('/api/NotificationMgmt/v1/GetPortalNotifications', [
             'isReadFilter' => $isReadFilter ? 'true' : 'false',
-        ]);
+        ]));
+    }
+
+    /**
+     * Coerce a response body that should be a JSON array of objects into a
+     * list of array<string, mixed>. The internal `get()` helper returns the
+     * full decoded body typed as array<string, mixed>; this drops any
+     * non-array entries so the caller's list type holds.
+     *
+     * @param array<int|string, mixed> $body
+     * @return list<array<string, mixed>>
+     */
+    private static function asListOfRecords(array $body): array
+    {
+        $out = [];
+        foreach ($body as $entry) {
+            if (is_array($entry)) {
+                /** @var array<string, mixed> $entry */
+                $out[] = $entry;
+            }
+        }
+        return $out;
     }
 
     /**
@@ -418,11 +512,26 @@ readonly class ClaimRevApi
         // Concatenate text from all chunks: candidates[0].content.parts[0].text
         $text = '';
         foreach ($chunks as $chunk) {
+            if (!is_array($chunk)) {
+                continue;
+            }
             $candidates = $chunk['candidates'] ?? [];
+            if (!is_array($candidates)) {
+                continue;
+            }
             foreach ($candidates as $candidate) {
-                $parts = $candidate['content']['parts'] ?? [];
+                if (!is_array($candidate)) {
+                    continue;
+                }
+                $content = $candidate['content'] ?? null;
+                $parts = is_array($content) ? ($content['parts'] ?? []) : [];
+                if (!is_array($parts)) {
+                    continue;
+                }
                 foreach ($parts as $part) {
-                    $text .= $part['text'] ?? '';
+                    if (is_array($part)) {
+                        $text .= TypeCoerce::asString($part['text'] ?? '');
+                    }
                 }
             }
         }

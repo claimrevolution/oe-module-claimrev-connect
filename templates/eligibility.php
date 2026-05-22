@@ -10,44 +10,73 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
+use OpenEMR\Core\OEGlobalsBag;
+use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
 use OpenEMR\Modules\ClaimRevConnector\EligibilityData;
 use OpenEMR\Modules\ClaimRevConnector\EligibilityObjectCreator;
-use OpenEMR\Modules\ClaimRevConnector\ValueMapping;
+use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 
-if ($pid == null) {
+/** @var int|null $pid */
+
+if ($pid === null) {
     echo xlt("Error retrieving patient.");
     exit;
 }
 $insurance = EligibilityData::getInsuranceData($pid);
+// When the patient has no insurance, still allow Coverage Discovery,
+// Demographics, and MBI Finder — those products query the payer using
+// patient demographics and don't need a payer row. Inject a synthetic
+// primary tab so the form renders, and hide the Eligibility option below.
+$noInsurance = $insurance === [];
+if ($noInsurance) {
+    $insurance = [['payer_responsibility' => 'primary']];
+}
+$eligibilityCsrfToken = CsrfHelper::collectCsrfToken('eligibility');
+$eligTestMode = (new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher()))
+    ->getGlobalConfig()
+    ->isTestModeEnabled();
 
 //check if form was submitted
-if (isset($_POST['checkElig'])) {
-    $pr = $_POST['responsibility'];
+if (ModuleInput::postExists('checkElig')) {
+    $pr = ModuleInput::postString('responsibility');
 
     // Collect selected products
     $selectedProducts = [];
-    if (!empty($_POST['product_1'])) {
+    if (ModuleInput::postString('product_1') !== '') {
         $selectedProducts[] = 1;
     }
-    if (!empty($_POST['product_3'])) {
+    if (ModuleInput::postString('product_3') !== '') {
         $selectedProducts[] = 3;
     }
-    if (!empty($_POST['product_2'])) {
+    if (ModuleInput::postString('product_2') !== '') {
         $selectedProducts[] = 2;
     }
-    if (!empty($_POST['product_5'])) {
+    if (ModuleInput::postString('product_5') !== '') {
         $selectedProducts[] = 5;
     }
-    if (empty($selectedProducts)) {
+    if ($selectedProducts === []) {
         $selectedProducts = [1]; // default to eligibility
     }
 
     $requestObjects = EligibilityObjectCreator::buildObject($pid, $pr, null, null, null, $selectedProducts);
     EligibilityObjectCreator::saveToDatabase($requestObjects, $pid);
-    $request = $requestObjects[0];
+    if ($requestObjects !== []) {
+        $request = $requestObjects[0];
+    }
 }
 
 ?>
+
+<?php if ($eligTestMode) { ?>
+    <div class="alert alert-warning mt-2 py-2">
+        <i class="fa fa-flask"></i>
+        <strong><?php echo xlt("Test Mode"); ?></strong> &mdash;
+        <?php echo xlt("ClaimRev test mode is on. Eligibility checks return simulated data fabricated from the patient's local insurance row, not a real payer response. Do not rely on these results clinically."); ?>
+    </div>
+<?php } ?>
 
 <div class="row">
     <div class="col">
@@ -58,7 +87,7 @@ if (isset($_POST['checkElig'])) {
 foreach ($insurance as $row) {
     ?>
             <li class="nav-item" role="presentation">
-                <a id="claimrev-ins-<?php echo attr(ucfirst((string) $row['payer_responsibility']));?>-tab" aria-selected="<?php echo($first); ?>" class="nav-link <?php echo($classActive);?>"  data-toggle="tab" role="tab" href="#<?php echo attr(ucfirst((string) $row['payer_responsibility']));?>"> <?php echo xlt(ucfirst((string) $row['payer_responsibility']));?>  </a>
+                <a id="claimrev-ins-<?php echo attr(ucfirst((string) $row['payer_responsibility']));?>-tab" aria-selected="<?php echo($first); ?>" class="nav-link <?php echo($classActive);?>"  data-toggle="tab" role="tab" href="#<?php echo attr(ucfirst((string) $row['payer_responsibility']));?>"> <?php echo text($noInsurance ? xl('No Insurance') : ucfirst((string) $row['payer_responsibility']));?>  </a>
             </li>
     <?php
     $first = "false";
@@ -77,14 +106,22 @@ foreach ($insurance as $row) {
                     <div class="col">
                         <form method="post" action="../../patient_file/summary/demographics.php">
                             <input type="hidden" id="responsibility" name="responsibility" value="<?php echo attr(ucfirst((string) $row['payer_responsibility']));?>">
+                            <?php if ($noInsurance) { ?>
+                                <div class="alert alert-info py-2 mb-2">
+                                    <i class="fa fa-info-circle"></i>
+                                    <?php echo xlt("No insurance on file. Coverage Discovery, Demographics, and MBI Finder can still be run using the patient's demographic information."); ?>
+                                </div>
+                            <?php } ?>
                             <div class="form-row align-items-center mb-2">
                                 <div class="col-auto">
+                                    <?php if (!$noInsurance) { ?>
                                     <div class="form-check form-check-inline">
-                                        <input class="form-check-input cr-product-cb cr-exclusive" type="checkbox" name="product_1" id="product_1_<?php echo attr($row['payer_responsibility']); ?>" value="1" checked data-pr="<?php echo attr($row['payer_responsibility']); ?>" data-excludes="product_3">
+                                        <input class="form-check-input cr-product-cb cr-exclusive" type="checkbox" name="product_1" id="product_1_<?php echo attr($row['payer_responsibility']); ?>" value="1" checked data-pr="<?php echo attr($row['payer_responsibility']); ?>" data-excludes="product_3,product_5">
                                         <label class="form-check-label" for="product_1_<?php echo attr($row['payer_responsibility']); ?>"><?php echo xlt("Eligibility"); ?></label>
                                     </div>
+                                    <?php } ?>
                                     <div class="form-check form-check-inline">
-                                        <input class="form-check-input cr-product-cb cr-exclusive" type="checkbox" name="product_3" id="product_3_<?php echo attr($row['payer_responsibility']); ?>" value="1" data-pr="<?php echo attr($row['payer_responsibility']); ?>" data-excludes="product_1">
+                                        <input class="form-check-input cr-product-cb cr-exclusive" type="checkbox" name="product_3" id="product_3_<?php echo attr($row['payer_responsibility']); ?>" value="1"<?php echo $noInsurance ? ' checked' : ''; ?> data-pr="<?php echo attr($row['payer_responsibility']); ?>" data-excludes="product_1">
                                         <label class="form-check-label" for="product_3_<?php echo attr($row['payer_responsibility']); ?>"><?php echo xlt("Coverage Discovery"); ?></label>
                                     </div>
                                     <span class="border-left ml-2 pl-2"></span>
@@ -93,7 +130,7 @@ foreach ($insurance as $row) {
                                         <label class="form-check-label" for="product_2_<?php echo attr($row['payer_responsibility']); ?>"><?php echo xlt("Demographics"); ?></label>
                                     </div>
                                     <div class="form-check form-check-inline">
-                                        <input class="form-check-input cr-product-cb" type="checkbox" name="product_5" id="product_5_<?php echo attr($row['payer_responsibility']); ?>" value="1">
+                                        <input class="form-check-input cr-product-cb cr-exclusive" type="checkbox" name="product_5" id="product_5_<?php echo attr($row['payer_responsibility']); ?>" value="1" data-pr="<?php echo attr($row['payer_responsibility']); ?>" data-excludes="product_1">
                                         <label class="form-check-label" for="product_5_<?php echo attr($row['payer_responsibility']); ?>"><?php echo xlt("MBI Finder"); ?></label>
                                     </div>
                                 </div>
@@ -102,6 +139,9 @@ foreach ($insurance as $row) {
                                     <button type="button" class="btn btn-primary btn-sm" onclick="checkNow('<?php echo attr($row['payer_responsibility']); ?>')">
                                         <span class="spinner-border spinner-border-sm d-none" id="spinner-<?php echo attr($row['payer_responsibility']); ?>" role="status"></span>
                                         <?php echo xlt("Check Now"); ?>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm ml-2" onclick="resetEligibility()" title="<?php echo attr(xl('Delete all cached eligibility results for this patient')); ?>">
+                                        <i class="fa fa-trash"></i> <?php echo xlt("Reset"); ?>
                                     </button>
                                 </div>
                             </div>
@@ -122,11 +162,11 @@ foreach ($insurance as $row) {
                                     (<?php echo xlt("Last Update"); ?>: <?php echo text($check["last_update"]);?>)
                                 </div>
                                 <div class="col">
-            <?php echo xlt("Message"); ?>: <?php echo text($check["response_message"]);?>
+            <?php echo xlt("Message"); ?>: <?php echo text((string) $check["response_message"]);?>
                                 </div>
                                 <div class="col-auto d-flex align-items-center">
                                     <button type="button" class="btn btn-outline-secondary btn-sm" title="<?php echo attr(xl('Update the Insurance card Eligibility tab with this data')); ?>"
-                                        onclick="syncNativeEligibility('<?php echo attr($pid); ?>', '<?php echo attr($row['payer_responsibility']); ?>', this)">
+                                        onclick="syncNativeEligibility('<?php echo attr((string) $pid); ?>', '<?php echo attr($row['payer_responsibility']); ?>', this)">
                                         <i class="fa fa-sync"></i> <?php echo xlt("Sync to Insurance Card"); ?>
                                     </button>
                                     <span class="cr-sync-status ml-2 small"></span>
@@ -158,56 +198,62 @@ foreach ($insurance as $row) {
 
                     // Extract per-product claimRevResultIds for AI chat
                     $responseData = json_decode((string) ($check['response_json'] ?? ''), true);
-                    $productResultIds = $responseData['_productResultIds'] ?? [];
+                    $productResultIdsRaw = is_array($responseData) ? ($responseData['_productResultIds'] ?? []) : [];
+                    $productResultIds = is_array($productResultIdsRaw) ? $productResultIdsRaw : [];
                     // Fallback: use the top-level claimRevResultId if no per-product map
-                    $claimRevResultId = $responseData['claimRevResultId'] ?? '';
-                    if (empty($productResultIds) && !empty($claimRevResultId)) {
-                        $productResultIds = [1 => $claimRevResultId]; // assume eligibility
-                    }
-                    $hasAnyChatId = !empty($productResultIds);
+                    $claimRevResultIdRaw = is_array($responseData) ? ($responseData['claimRevResultId'] ?? '') : '';
+                    $claimRevResultId = is_string($claimRevResultIdRaw) ? $claimRevResultIdRaw : '';
+            if ($productResultIds === [] && $claimRevResultId !== '') {
+                $productResultIds = [1 => $claimRevResultId]; // assume eligibility
+            }
+                    $hasAnyChatId = $productResultIds !== [];
                     // Extract payer code from first eligibility or coverage discovery result
                     $chatPayerCode = '';
-                    if (is_array($responseData)) {
-                        $mappedIndividuals = $responseData['mappedData']['individuals'] ?? [];
-                        $firstInd = !empty($mappedIndividuals) ? $mappedIndividuals[array_key_first($mappedIndividuals)] : [];
-                        $eligArr = $firstInd['eligibility'] ?? [];
-                        $firstElig = !empty($eligArr) ? $eligArr[array_key_first($eligArr)] : [];
-                        $chatPayerCode = $firstElig['payerInfo']['payerCode'] ?? '';
-                    }
+            if (is_array($responseData)) {
+                $mappedRaw = $responseData['mappedData'] ?? null;
+                $mappedIndividuals = (is_array($mappedRaw) && isset($mappedRaw['individuals']) && is_array($mappedRaw['individuals'])) ? $mappedRaw['individuals'] : [];
+                $firstInd = $mappedIndividuals !== [] ? $mappedIndividuals[array_key_first($mappedIndividuals)] : [];
+                $eligArr = is_array($firstInd) && isset($firstInd['eligibility']) && is_array($firstInd['eligibility']) ? $firstInd['eligibility'] : [];
+                $firstElig = $eligArr !== [] ? $eligArr[array_key_first($eligArr)] : [];
+                if (is_array($firstElig) && isset($firstElig['payerInfo']) && is_array($firstElig['payerInfo']) && isset($firstElig['payerInfo']['payerCode']) && is_string($firstElig['payerInfo']['payerCode'])) {
+                    $chatPayerCode = $firstElig['payerInfo']['payerCode'];
+                }
+            }
 
-                    $hasEligibility = property_exists($individual, 'eligibility') && !empty($individual->eligibility);
-                    $hasDemographics = property_exists($individual, 'demographicInfo') && $individual->demographicInfo !== null;
-                    $hasCoverageDiscoveryResults = property_exists($individual, 'coverageDiscovery') && !empty($individual->coverageDiscovery);
-                    $insuranceFinderStatus = property_exists($individual, 'insuranceFinderStatus') ? ($individual->insuranceFinderStatus ?? '') : '';
-                    $hasCoverageDiscovery = $hasCoverageDiscoveryResults || !empty($insuranceFinderStatus);
-                    $hasMbi = property_exists($individual, 'mbiFinderResults') && $individual->mbiFinderResults !== null;
+                    $hasEligibility = is_object($individual) && property_exists($individual, 'eligibility') && is_iterable($individual->eligibility);
+                    $hasDemographics = is_object($individual) && property_exists($individual, 'demographicInfo') && $individual->demographicInfo !== null;
+                    $hasCoverageDiscoveryResults = is_object($individual) && property_exists($individual, 'coverageDiscovery') && is_iterable($individual->coverageDiscovery);
+                    $insuranceFinderStatusRaw = is_object($individual) && property_exists($individual, 'insuranceFinderStatus') ? $individual->insuranceFinderStatus : '';
+                    $insuranceFinderStatus = is_string($insuranceFinderStatusRaw) ? $insuranceFinderStatusRaw : '';
+                    $hasCoverageDiscovery = $hasCoverageDiscoveryResults || $insuranceFinderStatus !== '';
+                    $hasMbi = is_object($individual) && property_exists($individual, 'mbiFinderResults') && $individual->mbiFinderResults !== null;
 
-                    if (!$hasEligibility && !$hasDemographics && !$hasCoverageDiscovery && !$hasMbi) {
-                        echo xlt("No results returned for selected products");
-                    } else {
-                    ?>
+            if (!$hasEligibility && !$hasDemographics && !$hasCoverageDiscovery && !$hasMbi) {
+                echo xlt("No results returned for selected products");
+            } else {
+                ?>
                         <ul class="nav nav-tabs mb-2" id="product-tabs-<?php echo $prKey; ?>">
-                            <?php if ($hasEligibility) { ?>
+                    <?php if ($hasEligibility) { ?>
                                 <li class="nav-item">
                                     <a class="nav-link active" data-toggle="tab" href="#product-elig-<?php echo $prKey; ?>"><?php echo xlt("Eligibility"); ?></a>
                                 </li>
                             <?php } ?>
-                            <?php if ($hasCoverageDiscovery) { ?>
+                    <?php if ($hasCoverageDiscovery) { ?>
                                 <li class="nav-item">
                                     <a class="nav-link <?php echo !$hasEligibility ? 'active' : ''; ?>" data-toggle="tab" href="#product-coverage-<?php echo $prKey; ?>"><?php echo xlt("Coverage Discovery"); ?></a>
                                 </li>
                             <?php } ?>
-                            <?php if ($hasDemographics) { ?>
+                    <?php if ($hasDemographics) { ?>
                                 <li class="nav-item">
                                     <a class="nav-link <?php echo !$hasEligibility && !$hasCoverageDiscovery ? 'active' : ''; ?>" data-toggle="tab" href="#product-demo-<?php echo $prKey; ?>"><?php echo xlt("Demographics"); ?></a>
                                 </li>
                             <?php } ?>
-                            <?php if ($hasMbi) { ?>
+                    <?php if ($hasMbi) { ?>
                                 <li class="nav-item">
                                     <a class="nav-link <?php echo !$hasEligibility && !$hasCoverageDiscovery && !$hasDemographics ? 'active' : ''; ?>" data-toggle="tab" href="#product-mbi-<?php echo $prKey; ?>"><?php echo xlt("MBI Finder"); ?></a>
                                 </li>
                             <?php } ?>
-                            <?php if ($hasAnyChatId) { ?>
+                    <?php if ($hasAnyChatId) { ?>
                                 <li class="nav-item">
                                     <a class="nav-link" data-toggle="tab" href="#product-chat-<?php echo $prKey; ?>">
                                         <i class="fa fa-robot"></i> <?php echo xlt("Conversation"); ?>
@@ -218,90 +264,30 @@ foreach ($insurance as $row) {
                         </ul>
                         <div class="tab-content">
 
-                        <?php
-                        // === Eligibility Tab (Product 1) ===
-                        if ($hasEligibility) {
-                            $results = $individual->eligibility;
-                            $index = 0;
-                        ?>
+                <?php
+                // === Eligibility Tab (Product 1) ===
+                if ($hasEligibility) {
+                    ?>
                             <div id="product-elig-<?php echo $prKey; ?>" class="tab-pane active">
-                            <?php foreach ($results as $result) {
-                                $index++;
-                                $eligibilityData = $result;
-                                $benefits = null;
-                                $subscriberPatient = null;
-                                $data = null;
-                                if (property_exists($eligibilityData, 'mapped271')) {
-                                    $data = $eligibilityData->mapped271;
-                                }
-
-                                if ($data !== null && property_exists($data, 'dependent')) {
-                                    $dependent = $data->dependent;
-                                    if ($dependent != null) {
-                                        if (property_exists($dependent, 'benefits')) {
-                                            $benefits = $dependent->benefits;
-                                            $subscriberPatient = $dependent;
-                                        }
-                                    }
-                                }
-
-                                if ($data !== null && property_exists($data, 'subscriber')) {
-                                    $subscriber = $data->subscriber;
-                                    if ($subscriber != null) {
-                                        if (property_exists($subscriber, 'benefits')) {
-                                            $benefits = $subscriber->benefits;
-                                            $subscriberPatient = $subscriber;
-                                        }
-                                    }
-                                }
+                                <?php
+                                $results = $individual->eligibility;
+                                $tabPrefix = 'elig';
+                                include $path . '/eligibility_result_block.php';
                                 ?>
-                                <ul class="nav nav-tabs nav-tabs-sm mb-2 mt-2">
-                                    <li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#elig-quick-<?php echo $prKey . '-' . attr($index); ?>"><?php echo xlt("Quick Info"); ?></a></li>
-                                    <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#elig-deductibles-<?php echo $prKey . '-' . attr($index); ?>"><?php echo xlt("Deductibles"); ?></a></li>
-                                    <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#elig-benefits-<?php echo $prKey . '-' . attr($index); ?>"><?php echo xlt("Benefits"); ?></a></li>
-                                    <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#elig-medicare-<?php echo $prKey . '-' . attr($index); ?>"><?php echo xlt("Medicare"); ?></a></li>
-                                    <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#elig-validations-<?php echo $prKey . '-' . attr($index); ?>"><?php echo xlt("Validations"); ?></a></li>
-                                </ul>
-                                <div class="tab-content">
-                                    <div id="elig-quick-<?php echo $prKey . '-' . attr($index); ?>" class="tab-pane active">
-                                        <?php include $path . '/quick_info.php'; ?>
-                                    </div>
-                                    <div id="elig-deductibles-<?php echo $prKey . '-' . attr($index); ?>" class="tab-pane">
-                                        <?php include $path . '/deductibles.php'; ?>
-                                    </div>
-                                    <div id="elig-benefits-<?php echo $prKey . '-' . attr($index); ?>" class="tab-pane">
-                                        <?php
-                                        if ($data !== null) {
-                                            $source = $data->informationSourceName;
-                                            include $path . '/source.php';
-                                            $receiver = $data->receiver;
-                                            include $path . '/receiver.php';
-                                        }
-                                        if ($benefits != null) {
-                                            include $path . '/subscriber_patient.php';
-                                            include $path . '/benefit.php';
-                                        }
-                                        ?>
-                                    </div>
-                                    <div id="elig-medicare-<?php echo $prKey . '-' . attr($index); ?>" class="tab-pane">
-                                        <?php include $path . '/medicare_info.php'; ?>
-                                    </div>
-                                    <div id="elig-validations-<?php echo $prKey . '-' . attr($index); ?>" class="tab-pane">
-                                        <?php include $path . '/validation.php'; ?>
-                                    </div>
-                                </div>
-                            <?php } //end foreach eligibility ?>
                             </div>
                         <?php } //end if eligibility ?>
 
                         <?php
                         // === Coverage Discovery Tab (Product 3) ===
+                        // CoverageDiscovery returns the same SharpRevenueEligibilityResponse
+                        // shape as Eligibility, so reuse the result-block template.
                         if ($hasCoverageDiscovery) {
-                        ?>
+                            ?>
                             <div id="product-coverage-<?php echo $prKey; ?>" class="tab-pane <?php echo !$hasEligibility ? 'active' : ''; ?>">
-                                <?php if ($hasCoverageDiscoveryResults) {
-                                    $coverageResults = $individual->coverageDiscovery;
-                                    include $path . '/coverage_discovery_results.php';
+                                <?php if ($hasCoverageDiscoveryResults && is_object($individual) && property_exists($individual, 'coverageDiscovery')) {
+                                    $results = $individual->coverageDiscovery;
+                                    $tabPrefix = 'cd';
+                                    include $path . '/eligibility_result_block.php';
                                 } elseif (strtolower($insuranceFinderStatus) === 'complete') { ?>
                                     <div class="text-center py-5">
                                         <i class="fa fa-search fa-3x text-muted mb-3" style="opacity:0.4"></i>
@@ -320,9 +306,9 @@ foreach ($insurance as $row) {
 
                         <?php
                         // === Demographics Tab (Product 2) ===
-                        if ($hasDemographics) {
+                        if ($hasDemographics && is_object($individual) && property_exists($individual, 'demographicInfo')) {
                             $demographicInfo = $individual->demographicInfo;
-                        ?>
+                            ?>
                             <div id="product-demo-<?php echo $prKey; ?>" class="tab-pane <?php echo !$hasEligibility && !$hasCoverageDiscovery ? 'active' : ''; ?>">
                                 <?php include $path . '/demographics_results.php'; ?>
                             </div>
@@ -330,9 +316,9 @@ foreach ($insurance as $row) {
 
                         <?php
                         // === MBI Finder Tab (Product 5) ===
-                        if ($hasMbi) {
+                        if ($hasMbi && is_object($individual) && property_exists($individual, 'mbiFinderResults')) {
                             $mbiResults = $individual->mbiFinderResults;
-                        ?>
+                            ?>
                             <div id="product-mbi-<?php echo $prKey; ?>" class="tab-pane <?php echo !$hasEligibility && !$hasCoverageDiscovery && !$hasDemographics ? 'active' : ''; ?>">
                                 <?php include $path . '/mbi_results.php'; ?>
                             </div>
@@ -341,7 +327,7 @@ foreach ($insurance as $row) {
                         <?php
                         // === Conversation Tab (AI Chat) ===
                         if ($hasAnyChatId) {
-                        ?>
+                            ?>
                             <div id="product-chat-<?php echo $prKey; ?>" class="tab-pane">
                                 <?php
                                 $chatPrKey = $prKey;
@@ -353,7 +339,7 @@ foreach ($insurance as $row) {
 
                         </div><!-- end tab-content -->
                     <?php
-                    } //end else has results
+            } //end else has results
         }//else individual_json not null
     }//end main foreach
     ?>
@@ -376,8 +362,9 @@ function checkNow(responsibility) {
 
     // Gather product selections for this responsibility tab
     var formData = {
-        pid: <?php echo js_escape($pid); ?>,
-        responsibility: responsibility
+        pid: <?php echo js_escape((string) $pid); ?>,
+        responsibility: responsibility,
+        csrf_token: <?php echo js_escape($eligibilityCsrfToken); ?>
     };
 
     var suffix = responsibility;
@@ -423,6 +410,31 @@ function checkNow(responsibility) {
     });
 }
 
+function resetEligibility() {
+    if (!confirm(<?php echo xlj("Delete all cached eligibility results for this patient? This cannot be undone."); ?>)) {
+        return;
+    }
+    $.ajax({
+        url: '../../modules/custom_modules/oe-module-claimrev-connect/public/eligibility_clear.php',
+        type: 'POST',
+        data: {
+            pid: <?php echo js_escape((string) $pid); ?>,
+            csrf_token: <?php echo js_escape($eligibilityCsrfToken); ?>
+        },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                location.reload();
+            } else {
+                alert(response.message || <?php echo xlj("Reset failed"); ?>);
+            }
+        },
+        error: function() {
+            alert(<?php echo xlj("Error communicating with server"); ?>);
+        }
+    });
+}
+
 function syncNativeEligibility(pid, payerResponsibility, btn) {
     var origHtml = btn.innerHTML;
     var origClass = btn.className;
@@ -438,7 +450,11 @@ function syncNativeEligibility(pid, payerResponsibility, btn) {
     $.ajax({
         url: '../../modules/custom_modules/oe-module-claimrev-connect/public/eligibility_sync_native.php',
         type: 'POST',
-        data: { pid: pid, payer_responsibility: payerResponsibility },
+        data: {
+            pid: pid,
+            payer_responsibility: payerResponsibility,
+            csrf_token: <?php echo js_escape($eligibilityCsrfToken); ?>
+        },
         dataType: 'json',
         success: function(response) {
             if (response.success) {
@@ -486,17 +502,21 @@ function escapeHtmlSync(text) {
     return div.innerHTML;
 }
 
-// Mutual exclusivity: Eligibility and Coverage Discovery can't both be checked
+// Mutual exclusivity: Eligibility, Coverage Discovery, and MBI Finder cannot run together.
 document.querySelectorAll('.cr-exclusive').forEach(function(cb) {
     cb.addEventListener('change', function() {
-        if (this.checked) {
-            var excludes = this.dataset.excludes;
-            var pr = this.dataset.pr;
-            if (excludes && pr) {
-                var other = document.getElementById(excludes + '_' + pr);
-                if (other) other.checked = false;
-            }
+        if (!this.checked) {
+            return;
         }
+        var excludes = this.dataset.excludes;
+        var pr = this.dataset.pr;
+        if (!excludes || !pr) {
+            return;
+        }
+        excludes.split(',').forEach(function(name) {
+            var other = document.getElementById(name.trim() + '_' + pr);
+            if (other) other.checked = false;
+        });
     });
 });
 </script>

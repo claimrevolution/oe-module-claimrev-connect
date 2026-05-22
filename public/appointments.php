@@ -10,13 +10,17 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
     require_once "../../../../globals.php";
 
     use OpenEMR\Common\Acl\AccessDeniedHelper;
     use OpenEMR\Common\Acl\AclMain;
     use OpenEMR\Core\Header;
     use OpenEMR\Modules\ClaimRevConnector\AppointmentsPage;
+    use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
     use OpenEMR\Modules\ClaimRevConnector\EligibilityData;
+    use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 
     $tab = "appointments";
 
@@ -25,31 +29,48 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
     AccessDeniedHelper::denyWithTemplate("ACL check failed for acct/bill: ClaimRev Connect - Appointments", xl("ClaimRev Connect - Appointments"));
 }
 
-// Handle bulk eligibility queue (Run & Go)
-if (isset($_POST['runBulkEligibility'])) {
-    $eids = $_POST['eids'] ?? [];
-    foreach ($eids as $eid) {
-        AppointmentsPage::runEligibilityForAppointment($eid);
+$csrfToken = CsrfHelper::collectCsrfToken('eligibility');
+
+// Both queue actions perform persistent side effects (delete + insert eligibility
+// rows) so a CSRF token is required before either runs. Mirrors
+// public/appointment_check_now.php.
+if (ModuleInput::postExists('runBulkEligibility') || ModuleInput::postExists('runEligibility')) {
+    if (!CsrfHelper::verifyCsrfToken(ModuleInput::postString('csrf_token'), 'eligibility')) {
+        http_response_code(403);
+        exit(xlt('Invalid CSRF token'));
+    }
+}
+
+// Handle bulk eligibility queue (Run & Go) — read raw $_POST['eids'] array via filter_input_array.
+$bulkEids = filter_input(INPUT_POST, 'eids', FILTER_UNSAFE_RAW, FILTER_REQUIRE_ARRAY);
+if (ModuleInput::postExists('runBulkEligibility') && is_array($bulkEids)) {
+    foreach ($bulkEids as $eid) {
+        if (is_string($eid) && $eid !== '') {
+            AppointmentsPage::runEligibilityForAppointment($eid);
+        }
     }
 }
 
 // Handle single appointment queue (fallback, non-JS)
-if (isset($_POST['runEligibility'])) {
-    $eid = $_POST['eid'];
-    if ($eid != null) {
-        AppointmentsPage::runEligibilityForAppointment($eid);
+if (ModuleInput::postExists('runEligibility')) {
+    $singleEid = ModuleInput::postString('eid');
+    if ($singleEid !== '') {
+        AppointmentsPage::runEligibilityForAppointment($singleEid);
     }
 }
 
 // Default date range: today through 7 days out
 $defaultStart = date('Y-m-d');
 $defaultEnd = date('Y-m-d', strtotime('+7 days'));
-$startDate = isset($_POST['startDate']) && $_POST['startDate'] != '' ? $_POST['startDate'] : $defaultStart;
-$endDate = isset($_POST['endDate']) && $_POST['endDate'] != '' ? $_POST['endDate'] : $defaultEnd;
-$facilityId = isset($_POST['facilityId']) ? $_POST['facilityId'] : '';
-$providerId = isset($_POST['providerId']) ? $_POST['providerId'] : '';
+$startDateRaw = ModuleInput::postString('startDate');
+$endDateRaw = ModuleInput::postString('endDate');
+$startDate = $startDateRaw !== '' ? $startDateRaw : $defaultStart;
+$endDate = $endDateRaw !== '' ? $endDateRaw : $defaultEnd;
+$facilityId = ModuleInput::postString('facilityId');
+$providerId = ModuleInput::postString('providerId');
+$eligFilter = ModuleInput::postString('eligFilter', 'all');
 
-$appointments = AppointmentsPage::getUpcomingAppointments($startDate, $endDate, $facilityId, $providerId);
+$appointments = AppointmentsPage::getUpcomingAppointments($startDate, $endDate, $facilityId, $providerId, $eligFilter);
 $facilities = AppointmentsPage::getFacilities();
 $providers = AppointmentsPage::getProviders();
 
@@ -97,7 +118,7 @@ $path = str_replace("public", "templates", __DIR__);
                                         foreach ($facilities as $fac) {
                                             $selected = ($facilityId == $fac['id']) ? 'selected' : '';
                                             ?>
-                                            <option value="<?php echo attr($fac['id']); ?>" <?php echo $selected; ?>><?php echo text($fac['name']); ?></option>
+                                            <option value="<?php echo attr((string) $fac['id']); ?>" <?php echo $selected; ?>><?php echo text($fac['name']); ?></option>
                                             <?php
                                         }
                                         ?>
@@ -113,10 +134,22 @@ $path = str_replace("public", "templates", __DIR__);
                                         foreach ($providers as $prov) {
                                             $selected = ($providerId == $prov['id']) ? 'selected' : '';
                                             ?>
-                                            <option value="<?php echo attr($prov['id']); ?>" <?php echo $selected; ?>><?php echo text($prov['provider_name']); ?></option>
+                                            <option value="<?php echo attr((string) $prov['id']); ?>" <?php echo $selected; ?>><?php echo text($prov['provider_name']); ?></option>
                                             <?php
                                         }
                                         ?>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="eligFilter"><?php echo xlt("Eligibility Status"); ?></label>
+                                    <select class="form-control" id="eligFilter" name="eligFilter">
+                                        <option value="all" <?php echo ($eligFilter == 'all') ? 'selected' : ''; ?>><?php echo xlt("All"); ?></option>
+                                        <option value="needs_attention" <?php echo ($eligFilter == 'needs_attention') ? 'selected' : ''; ?>><?php echo xlt("Needs Attention"); ?></option>
+                                        <option value="active_coverage" <?php echo ($eligFilter == 'active_coverage') ? 'selected' : ''; ?>><?php echo xlt("Active Coverage"); ?></option>
+                                        <option value="not_checked" <?php echo ($eligFilter == 'not_checked') ? 'selected' : ''; ?>><?php echo xlt("Not Checked"); ?></option>
+                                        <option value="stale" <?php echo ($eligFilter == 'stale') ? 'selected' : ''; ?>><?php echo xlt("Stale"); ?></option>
                                     </select>
                                 </div>
                             </div>
@@ -136,15 +169,17 @@ $path = str_replace("public", "templates", __DIR__);
             $appointmentRows[] = $row;
         }
 
-        if (empty($appointmentRows)) {
+        if ($appointmentRows === []) {
             echo "<div class='mt-3'>" . xlt("No appointments found for the selected date range.") . "</div>";
         } else {
-        ?>
+            ?>
             <form method="post" action="appointments.php" id="bulkForm">
+                <input type="hidden" name="csrf_token" value="<?php echo attr($csrfToken); ?>"/>
                 <input type="hidden" name="startDate" value="<?php echo attr($startDate); ?>"/>
                 <input type="hidden" name="endDate" value="<?php echo attr($endDate); ?>"/>
                 <input type="hidden" name="facilityId" value="<?php echo attr($facilityId); ?>"/>
                 <input type="hidden" name="providerId" value="<?php echo attr($providerId); ?>"/>
+                <input type="hidden" name="eligFilter" value="<?php echo attr($eligFilter); ?>"/>
 
                 <div class="row mt-2 mb-2">
                     <div class="col">
@@ -188,9 +223,9 @@ $path = str_replace("public", "templates", __DIR__);
                             if ($eligStatus != null) {
                                 if (strtolower($eligStatus) == 'success') {
                                     $summaries = AppointmentsPage::getEligibilitySummary($eligIndividualJson);
-                                    if ($summaries != null && count($summaries) > 0) {
-                                        $coverageStatus = $summaries[0]->status;
-                                        if ($coverageStatus == 'Active Coverage') {
+                                    if ($summaries !== null && $summaries !== []) {
+                                        $coverageStatus = \OpenEMR\Modules\ClaimRevConnector\TypeCoerce::asString($summaries[0]->status);
+                                        if ($coverageStatus === 'Active Coverage') {
                                             $statusClass = 'elig-active';
                                             $statusText = xlt("Active Coverage");
                                         } else {
@@ -216,16 +251,16 @@ $path = str_replace("public", "templates", __DIR__);
                             }
 
                             $payerName = '';
-                            if ($eligIndividualJson != null) {
+                            if ($eligIndividualJson !== null) {
                                 $summaries = AppointmentsPage::getEligibilitySummary($eligIndividualJson);
-                                if ($summaries != null && count($summaries) > 0) {
-                                    $payerName = $summaries[0]->payerName;
+                                if ($summaries !== null && $summaries !== []) {
+                                    $payerName = \OpenEMR\Modules\ClaimRevConnector\TypeCoerce::asString($summaries[0]->payerName);
                                 }
                             }
                             ?>
-                            <tr id="appt-row-<?php echo attr($appt['pc_eid']); ?>">
+                            <tr id="appt-row-<?php echo attr((string) $appt['pc_eid']); ?>">
                                 <td>
-                                    <input type="checkbox" name="eids[]" value="<?php echo attr($appt['pc_eid']); ?>" class="appt-checkbox"/>
+                                    <input type="checkbox" name="eids[]" value="<?php echo attr((string) $appt['pc_eid']); ?>" class="appt-checkbox"/>
                                 </td>
                                 <td><?php echo text($appt['appointmentDate']); ?></td>
                                 <td><?php echo text(substr($appt['pc_startTime'], 0, 5)); ?></td>
@@ -233,13 +268,13 @@ $path = str_replace("public", "templates", __DIR__);
                                 <td><?php echo text($appt['dob']); ?></td>
                                 <td><?php echo text($appt['provider_name']); ?></td>
                                 <td><?php echo text($appt['facility_name']); ?></td>
-                                <td id="status-<?php echo attr($appt['pc_eid']); ?>">
+                                <td id="status-<?php echo attr((string) $appt['pc_eid']); ?>">
                                     <span class="<?php echo attr($statusClass); ?>"><?php echo $statusText; ?></span>
                                     <?php if ($payerName != '') { ?>
                                         <br/><small><?php echo text($payerName); ?></small>
                                     <?php } ?>
-                                    <?php if ($eligMessage != null && $eligMessage != '') { ?>
-                                        <br/><small class="text-muted"><?php echo text($eligMessage); ?></small>
+                                    <?php if (($eligMessage ?? '') !== '') { ?>
+                                        <br/><small class="text-muted"><?php echo text((string) $eligMessage); ?></small>
                                     <?php } ?>
                                 </td>
                                 <td>
@@ -252,11 +287,11 @@ $path = str_replace("public", "templates", __DIR__);
                                     ?>
                                 </td>
                                 <td>
-                                    <button type="button" class="btn btn-primary btn-check-elig" onclick="checkNowAppointment(<?php echo attr_js($appt['pc_eid']); ?>, this);">
+                                    <button type="button" class="btn btn-primary btn-check-elig" onclick="checkNowAppointment(<?php echo attr_js((string) $appt['pc_eid']); ?>, this);">
                                         <span class="spinner-border spinner-border-sm d-none" role="status"></span>
                                         <?php echo xlt("Check Now"); ?>
                                     </button>
-                                    <button type="submit" name="runEligibility" class="btn btn-outline-secondary btn-check-elig" onclick="document.getElementById('eid').value='<?php echo attr($appt['pc_eid']); ?>';">
+                                    <button type="submit" name="runEligibility" class="btn btn-outline-secondary btn-check-elig" onclick="document.getElementById('eid').value='<?php echo attr((string) $appt['pc_eid']); ?>';">
                                         <?php echo xlt("Queue"); ?>
                                     </button>
                                 </td>
@@ -278,16 +313,16 @@ $path = str_replace("public", "templates", __DIR__);
                                                     continue;
                                                 }
 
-                                                $individualJson = $check["individual_json"];
-                                                $individual = json_decode($individualJson);
-                                                if ($individual == null || !property_exists($individual, 'eligibility')) {
+                                                $individualJson = $check["individual_json"] ?? '';
+                                                $individual = json_decode((string) $individualJson);
+                                                if (!is_object($individual) || !property_exists($individual, 'eligibility') || !is_iterable($individual->eligibility)) {
                                                     continue;
                                                 }
 
                                                 $results = $individual->eligibility;
                                                 foreach ($results as $eligibilityData) {
                                                     $data = null;
-                                                    if (property_exists($eligibilityData, 'mapped271')) {
+                                                    if (is_object($eligibilityData) && property_exists($eligibilityData, 'mapped271')) {
                                                         $data = $eligibilityData->mapped271;
                                                     }
                                                     if ($data == null) {
@@ -346,7 +381,7 @@ $path = str_replace("public", "templates", __DIR__);
                 $.ajax({
                     url: 'appointment_check_now.php',
                     type: 'POST',
-                    data: { eid: eid },
+                    data: { eid: eid, csrf_token: <?php echo js_escape($csrfToken); ?> },
                     dataType: 'json',
                     success: function(response) {
                         if (spinner) spinner.classList.add('d-none');
@@ -417,7 +452,7 @@ $path = str_replace("public", "templates", __DIR__);
                     $.ajax({
                         url: 'appointment_check_now.php',
                         type: 'POST',
-                        data: { eid: eid },
+                        data: { eid: eid, csrf_token: <?php echo js_escape($csrfToken); ?> },
                         dataType: 'json',
                         success: function(response) {
                             if (rowSpinner) rowSpinner.classList.add('d-none');

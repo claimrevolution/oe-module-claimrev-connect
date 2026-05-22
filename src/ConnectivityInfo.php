@@ -12,6 +12,8 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 namespace OpenEMR\Modules\ClaimRevConnector;
 
 use OpenEMR\Core\OEGlobalsBag;
@@ -31,9 +33,8 @@ class ConnectivityInfo
         $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
         $globalsConfig = $bootstrap->getGlobalConfig();
 
-        /** @var string $clientId */
-        $clientId = $globalsConfig->getClientId();
-        $this->clientId = $clientId ?? '';
+        $clientIdRaw = $globalsConfig->getClientId();
+        $this->clientId = is_string($clientIdRaw) ? $clientIdRaw : '';
 
         try {
             $this->client_authority = $globalsConfig->getClientAuthority();
@@ -56,7 +57,10 @@ class ConnectivityInfo
             $api = ClaimRevApi::makeFromGlobals();
             $this->hasToken = $api->canConnect();
             $account = $api->getDefaultAccount();
-            $this->defaultAccount = $account['value'] ?? json_encode($account, JSON_THROW_ON_ERROR);
+            $accountValue = $account['value'] ?? null;
+            $this->defaultAccount = is_string($accountValue)
+                ? $accountValue
+                : json_encode($account, JSON_THROW_ON_ERROR);
         } catch (ClaimRevAuthenticationException) {
             $this->hasToken = false;
             $this->defaultAccount = '';

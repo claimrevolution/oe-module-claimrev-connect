@@ -10,6 +10,8 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
     require_once "../../../../globals.php";
 
     use OpenEMR\Common\Acl\AccessDeniedHelper;
@@ -17,6 +19,9 @@
     use OpenEMR\Common\Csrf\CsrfUtils;
     use OpenEMR\Core\Header;
     use OpenEMR\Modules\ClaimRevConnector\ClaimRevModuleSetup;
+    use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
+    use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
+    use OpenEMR\Modules\ClaimRevConnector\TypeCoerce;
 
     $tab = "setup";
 
@@ -26,29 +31,29 @@ if (!AclMain::aclCheckCore('admin', 'manage_modules')) {
 }
 
 $actionMessage = '';
-if (!empty($_POST)) {
-    if (!CsrfUtils::verifyCsrfToken($_POST["csrf_token_form"], "ClaimRevModule")) {
+if (ModuleInput::isPostRequest()) {
+    if (!CsrfHelper::verifyCsrfToken(ModuleInput::postString('csrf_token_form'), 'ClaimRevModule')) {
         CsrfUtils::csrfNotVerified();
     }
-    if (isset($_POST['deactivateSftp'])) {
+    if (ModuleInput::postExists('deactivateSftp')) {
         ClaimRevModuleSetup::deactivateSftpService();
         $actionMessage = xlt("SFTP service has been deactivated.");
     }
-    if (isset($_POST['reactivateSftp'])) {
+    if (ModuleInput::postExists('reactivateSftp')) {
         ClaimRevModuleSetup::reactivateSftpService();
         $actionMessage = xlt("SFTP service has been reactivated.");
     }
-    if (isset($_POST['backgroundService'])) {
+    if (ModuleInput::postExists('backgroundService')) {
         ClaimRevModuleSetup::createBackGroundServices();
         $actionMessage = xlt("Background services have been reset to defaults.");
     }
-    if (isset($_POST['runMigrations'])) {
+    if (ModuleInput::postExists('runMigrations')) {
         ClaimRevModuleSetup::runMigrations();
         $actionMessage = xlt("Upgrade complete. New tables and services have been applied.");
     }
-    if (isset($_POST['createPartner'])) {
-        $idNumber = $_POST['partnerIdNumber'] ?? '';
-        $senderId = $_POST['partnerSenderId'] ?? '';
+    if (ModuleInput::postExists('createPartner')) {
+        $idNumber = ModuleInput::postString('partnerIdNumber');
+        $senderId = ModuleInput::postString('partnerSenderId');
         ClaimRevModuleSetup::createPartnerRecord($idNumber, $senderId);
         $actionMessage = xlt("X12 partner record has been created.");
     }
@@ -85,7 +90,9 @@ $services = ClaimRevModuleSetup::getBackgroundServices();
                         </div>
                         <div class="card-body">
                             <?php
-                            $globalsConfig = new \OpenEMR\Modules\ClaimRevConnector\GlobalConfig($GLOBALS);
+                            /** @var array<string, mixed> $globalsForConfig */
+                            $globalsForConfig = $GLOBALS;
+                            $globalsConfig = new \OpenEMR\Modules\ClaimRevConnector\GlobalConfig($globalsForConfig);
                             if (ClaimRevModuleSetup::doesPartnerExists()) {
                                 echo "<span class='text-success'>" . xlt("It looks like your X12 partner record is setup.") . "</span>";
                             } elseif (!$globalsConfig->isConfigured()) {
@@ -116,11 +123,11 @@ $services = ClaimRevModuleSetup::getBackgroundServices();
                             <p><?php echo xlt("There are required background services that are needed to send claims, pick up reports, and check eligibility. They are listed below in a table, but if there is something strange going on use the button to re-create the records."); ?></p>
                             <form method="post" action="setup.php" class="d-inline">
                                 <button type="submit" name="backgroundService" class="btn btn-primary"><?php echo xlt("Set Defaults"); ?></button>
-                                <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfUtils::collectCsrfToken('ClaimRevModule')); ?>" />
+                                <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfHelper::collectCsrfToken('ClaimRevModule')); ?>" />
                             </form>
                             <form method="post" action="setup.php" class="d-inline ml-2">
                                 <button type="submit" name="runMigrations" class="btn btn-secondary"><?php echo xlt("Run Upgrade"); ?></button>
-                                <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfUtils::collectCsrfToken('ClaimRevModule')); ?>" />
+                                <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfHelper::collectCsrfToken('ClaimRevModule')); ?>" />
                             </form>
                         </div>
                     </div>
@@ -136,7 +143,7 @@ $services = ClaimRevModuleSetup::getBackgroundServices();
                                 ?>
                                 <form method="post" action="setup.php">
                                     <button type="submit" name="deactivateSftp" class="btn btn-warning"><?php echo xlt("Deactivate"); ?></button>
-                                    <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfUtils::collectCsrfToken('ClaimRevModule')); ?>" />
+                                    <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfHelper::collectCsrfToken('ClaimRevModule')); ?>" />
                                 </form>
                                 <?php
                             } else {
@@ -144,7 +151,7 @@ $services = ClaimRevModuleSetup::getBackgroundServices();
                                 ?>
                                 <form method="post" action="setup.php">
                                     <button type="submit" name="reactivateSftp" class="btn btn-outline-secondary"><?php echo xlt("Reactivate"); ?></button>
-                                    <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfUtils::collectCsrfToken('ClaimRevModule')); ?>" />
+                                    <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfHelper::collectCsrfToken('ClaimRevModule')); ?>" />
                                 </form>
                                 <?php
                             }
@@ -174,19 +181,19 @@ $services = ClaimRevModuleSetup::getBackgroundServices();
                             foreach ($services as $service) {
                                 ?>
                                 <tr>
-                                    <td><?php echo text($service["name"]); ?> - <?php echo text($service["title"]); ?></td>
-                                    <td><?php echo text($service["active"]); ?></td>
+                                    <td><?php echo text(TypeCoerce::asString($service["name"] ?? '')); ?> - <?php echo text(TypeCoerce::asString($service["title"] ?? '')); ?></td>
+                                    <td><?php echo text(TypeCoerce::asString($service["active"] ?? '')); ?></td>
                                     <td>
-                                        <?php if ($service["running"] == 1) { ?>
-                                            <span class="text-danger font-weight-bold"><?php echo text($service["running"]); ?></span>
+                                        <?php if (TypeCoerce::asInt($service["running"] ?? 0) === 1) { ?>
+                                            <span class="text-danger font-weight-bold"><?php echo text(TypeCoerce::asString($service["running"])); ?></span>
                                         <?php } else { ?>
-                                            <?php echo text($service["running"]); ?>
+                                            <?php echo text(TypeCoerce::asString($service["running"] ?? '')); ?>
                                         <?php } ?>
                                     </td>
-                                    <td><?php echo text($service["next_run"]); ?></td>
-                                    <td><?php echo text($service["execute_interval"]); ?></td>
-                                    <td><?php echo text($service["function"]); ?></td>
-                                    <td><small><?php echo text($service["require_once"]); ?></small></td>
+                                    <td><?php echo text(TypeCoerce::asString($service["next_run"] ?? '')); ?></td>
+                                    <td><?php echo text(TypeCoerce::asString($service["execute_interval"] ?? '')); ?></td>
+                                    <td><?php echo text(TypeCoerce::asString($service["function"] ?? '')); ?></td>
+                                    <td><small><?php echo text(TypeCoerce::asString($service["require_once"] ?? '')); ?></small></td>
                                 </tr>
                                 <?php
                             }
@@ -222,7 +229,7 @@ $services = ClaimRevModuleSetup::getBackgroundServices();
                             </div>
                             <div class="modal-footer">
                                 <input type="hidden" name="createPartner" value="1" />
-                                <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfUtils::collectCsrfToken('ClaimRevModule')); ?>" />
+                                <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfHelper::collectCsrfToken('ClaimRevModule')); ?>" />
                                 <button type="button" class="btn btn-secondary" data-dismiss="modal"><?php echo xlt("Cancel"); ?></button>
                                 <button type="submit" class="btn btn-success"><?php echo xlt("Create"); ?></button>
                             </div>

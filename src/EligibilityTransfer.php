@@ -12,14 +12,12 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-if (!defined('OPENEMR_GLOBALS_LOADED')) {
-    http_response_code(404);
-    exit();
-}
-
 use OpenEMR\Billing\EDI270;
+use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\BaseService;
 
@@ -38,6 +36,35 @@ class EligibilityTransfer extends BaseService
 
     public static function sendWaitingEligibility(): void
     {
+        // Best-effort version check on the 24h throttle. ClaimRev may flag
+        // this version as must-not-run for a security or compliance reason.
+        $check = ModuleVersionCheckService::check();
+        if ($check !== null && $check->disabled) {
+            return;
+        }
+
+        $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+        $testMode = $bootstrap->getGlobalConfig()->isTestModeEnabled();
+
+        if ($testMode) {
+            // Resolve all queued requests via the mock; the cron service
+            // still drains the queue but never hits the live API.
+            /** @var array<int, array{id: int|string, request_json?: string, pid?: int|string, payer_responsibility?: string}> */
+            $waitingEligibility = EligibilityData::getEligibilityCheckByStatus(self::STATUS_WAITING);
+            foreach ($waitingEligibility as $row) {
+                $eid = $row['id'];
+                $rowPid = TypeCoerce::asInt($row['pid'] ?? 0);
+                $rowPr = TypeCoerce::asString($row['payer_responsibility'] ?? 'P');
+                if ($rowPid === 0) {
+                    self::saveEligibility(null, $eid);
+                    continue;
+                }
+                $result = EligibilityMockService::buildResponse($rowPid, $rowPr);
+                self::saveEligibility($result, $eid);
+            }
+            return;
+        }
+
         try {
             $api = ClaimRevApi::makeFromGlobals();
         } catch (ClaimRevAuthenticationException) {
@@ -95,19 +122,6 @@ class EligibilityTransfer extends BaseService
     }
 
     /**
-     * Send eligibility request immediately (real-time) and save the result.
-     *
-     * Works for any product: Eligibility (1), Demographics (2), Coverage Discovery (3), MBI Finder (5).
-     *
-     * @param int|string $pid Patient ID
-     * @param string $payerResponsibility Payer responsibility code (e.g. 'primary')
-     * @param array<int> $productsToRun Product IDs to check
-     * @param string|null $eventDate Optional appointment date
-     * @param int|string|null $facilityId Optional facility ID
-     * @param int|string|null $providerId Optional provider ID
-     * @return array{success: bool, message: string, eid?: int|string}
-     */
-    /**
      * Product property keys in the individual JSON, keyed by product ID.
      */
     private const PRODUCT_KEYS = [
@@ -117,28 +131,55 @@ class EligibilityTransfer extends BaseService
         5 => 'mbiFinderResults',
     ];
 
-    public static function sendImmediate($pid, $payerResponsibility, array $productsToRun = [1], $eventDate = null, $facilityId = null, $providerId = null): array
-    {
-        try {
-            $api = ClaimRevApi::makeFromGlobals();
-        } catch (ClaimRevException) {
-            return ['success' => false, 'message' => 'Failed to connect to ClaimRev API'];
+    /**
+     * Send eligibility request immediately (real-time) and save the result.
+     *
+     * Works for any product: Eligibility (1), Demographics (2), Coverage Discovery (3), MBI Finder (5).
+     *
+     * @param int|string      $pid                 Patient ID
+     * @param string          $payerResponsibility Payer responsibility code (e.g. 'primary')
+     * @param list<int>       $productsToRun       Product IDs to check
+     * @param string|null     $eventDate           Optional appointment date
+     * @param int|string|null $facilityId          Optional facility ID
+     * @param int|string|null $providerId          Optional provider ID
+     * @return array{success: bool, message: string, eid?: int|string, coverageStatus?: string, payerName?: string}
+     */
+    public static function sendImmediate(
+        int|string $pid,
+        string $payerResponsibility,
+        array $productsToRun = [1],
+        ?string $eventDate = null,
+        int|string|null $facilityId = null,
+        int|string|null $providerId = null,
+    ): array {
+        // Best-effort version check on the 24h throttle.
+        $check = ModuleVersionCheckService::check();
+        if ($check !== null && $check->disabled) {
+            return ['success' => false, 'message' => 'Module disabled by ClaimRev: ' . $check->disableReason];
         }
 
+        $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+        $testMode = $bootstrap->getGlobalConfig()->isTestModeEnabled();
+
+        $pidInt = (int) $pid;
         $formattedPr = ValueMapping::mapPayerResponsibility($payerResponsibility);
 
         // Check for existing record to merge into
-        $existingRecord = EligibilityData::getExistingRecord($pid, $formattedPr);
-        $existingIndividual = null;
-        if ($existingRecord !== null && strtolower($existingRecord['status'] ?? '') === 'success') {
-            $existingIndividual = json_decode($existingRecord['individual_json'] ?? '', true);
+        $existingRecord = EligibilityData::getExistingRecord($pidInt, $formattedPr);
+        $existingIndividual = [];
+        if ($existingRecord !== null && strtolower(TypeCoerce::asString($existingRecord['status'] ?? '')) === 'success') {
+            $decoded = json_decode(TypeCoerce::asString($existingRecord['individual_json'] ?? ''), true);
+            if (is_array($decoded)) {
+                /** @var array<string, mixed> $existingIndividual */
+                $existingIndividual = $decoded;
+            }
         }
 
         // Delete and recreate the record for the API call
-        EligibilityData::removeEligibilityCheck($pid, $formattedPr);
+        EligibilityData::removeEligibilityCheck($pidInt, $formattedPr);
 
         $requestObjects = EligibilityObjectCreator::buildObject($pid, $payerResponsibility, $eventDate, $facilityId, $providerId, $productsToRun);
-        if (empty($requestObjects)) {
+        if ($requestObjects === []) {
             return ['success' => false, 'message' => 'No insurance data found for patient'];
         }
 
@@ -146,7 +187,7 @@ class EligibilityTransfer extends BaseService
         EligibilityObjectCreator::saveToDatabase($requestObjects, $pid);
 
         // Now fetch the waiting record we just created
-        $eligRecord = EligibilityData::getEligibilityResult($pid, $payerResponsibility);
+        $eligRecord = EligibilityData::getEligibilityResult($pidInt, $payerResponsibility);
         $eid = null;
         foreach ($eligRecord as $rec) {
             $waitingRecords = EligibilityData::getEligibilityCheckByStatus(self::STATUS_WAITING);
@@ -162,41 +203,57 @@ class EligibilityTransfer extends BaseService
         if ($eid === null) {
             return ['success' => false, 'message' => 'Failed to create eligibility request'];
         }
-
-        // Send immediately via the API
-        $req = $requestObjects[0];
-        try {
-            $result = $api->uploadEligibility($req);
-        } catch (ClaimRevApiException) {
-            self::saveEligibility(null, $eid);
-            return ['success' => false, 'message' => 'API call failed', 'eid' => $eid];
+        if (!is_int($eid) && !is_string($eid)) {
+            $eid = TypeCoerce::asString($eid);
         }
 
-        // If retryLater, poll for results (like the portal does for coverage discovery)
-        if ($result['retryLater'] ?? false) {
-            $claimRevResultId = $result['claimRevResultId'] ?? '';
-            if (!empty($claimRevResultId)) {
-                $result = self::pollForResults($api, $claimRevResultId, $result);
+        // Send immediately via the API (or build a mock response in test mode)
+        $req = $requestObjects[0];
+        if ($testMode) {
+            $result = EligibilityMockService::buildResponse($pidInt, $payerResponsibility, $productsToRun);
+        } else {
+            try {
+                $api = ClaimRevApi::makeFromGlobals();
+            } catch (ClaimRevException) {
+                self::saveEligibility(null, $eid);
+                return ['success' => false, 'message' => 'Failed to connect to ClaimRev API', 'eid' => $eid];
+            }
+            try {
+                $result = $api->uploadEligibility($req);
+            } catch (ClaimRevApiException) {
+                self::saveEligibility(null, $eid);
+                return ['success' => false, 'message' => 'API call failed', 'eid' => $eid];
+            }
+
+            // If retryLater, poll for results (like the portal does for coverage discovery)
+            if ($result['retryLater'] ?? false) {
+                $claimRevResultId = TypeCoerce::asString($result['claimRevResultId'] ?? '');
+                if ($claimRevResultId !== '') {
+                    $result = self::pollForResults($api, $claimRevResultId, $result);
+                }
             }
         }
 
         // Track claimRevResultId per product so the AI chat can reference the right one
-        $newResultId = $result['claimRevResultId'] ?? '';
+        $newResultIdStr = TypeCoerce::asString($result['claimRevResultId'] ?? '');
         $existingResultIds = [];
         if ($existingRecord !== null) {
-            $existingResponse = json_decode($existingRecord['response_json'] ?? '', true);
-            $existingResultIds = $existingResponse['_productResultIds'] ?? [];
+            $existingResponse = json_decode(TypeCoerce::asString($existingRecord['response_json'] ?? ''), true);
+            if (is_array($existingResponse) && is_array($existingResponse['_productResultIds'] ?? null)) {
+                /** @var array<int|string, string> $existingResultIds */
+                $existingResultIds = $existingResponse['_productResultIds'];
+            }
         }
         // Map each product we just ran to the new claimRevResultId
         foreach ($productsToRun as $productId) {
-            if (!empty($newResultId)) {
-                $existingResultIds[$productId] = $newResultId;
+            if ($newResultIdStr !== '') {
+                $existingResultIds[$productId] = $newResultIdStr;
             }
         }
         $result['_productResultIds'] = $existingResultIds;
 
         // Merge new results with existing individual data
-        if (is_array($existingIndividual) && is_array($result)) {
+        if ($existingIndividual !== []) {
             $result = self::mergeProductResults($result, $existingIndividual, $productsToRun);
         }
 
@@ -207,15 +264,20 @@ class EligibilityTransfer extends BaseService
         $payerName = '';
         $mappedData = $result['mappedData'] ?? null;
         if (is_array($mappedData) && isset($mappedData['individuals']) && is_array($mappedData['individuals'])) {
-            $individual = $mappedData['individuals'][array_key_first($mappedData['individuals'])] ?? null;
+            $firstKey = array_key_first($mappedData['individuals']);
+            $individual = $firstKey !== null ? ($mappedData['individuals'][$firstKey] ?? null) : null;
             if (is_array($individual)) {
                 // Try eligibility first, then coverage discovery
                 $eligData = $individual['eligibility'] ?? $individual['coverageDiscovery'] ?? null;
-                if (is_array($eligData) && !empty($eligData)) {
-                    $firstElig = $eligData[array_key_first($eligData)] ?? null;
+                if (is_array($eligData) && $eligData !== []) {
+                    $firstEligKey = array_key_first($eligData);
+                    $firstElig = $eligData[$firstEligKey] ?? null;
                     if (is_array($firstElig)) {
-                        $coverageStatus = $firstElig['status'] ?? 'Complete';
-                        $payerName = $firstElig['payerInfo']['payerName'] ?? '';
+                        $coverageStatus = TypeCoerce::asString($firstElig['status'] ?? 'Complete');
+                        $payerInfo = $firstElig['payerInfo'] ?? null;
+                        if (is_array($payerInfo)) {
+                            $payerName = TypeCoerce::asString($payerInfo['payerName'] ?? '');
+                        }
                     }
                 }
             }
@@ -253,18 +315,18 @@ class EligibilityTransfer extends BaseService
                 continue;
             }
 
-            $status = $visit['sharpRevenueData']['mappedData']['status']
-                ?? $visit['mappedData']['status']
-                ?? null;
+            $sharp = is_array($visit['sharpRevenueData'] ?? null) ? $visit['sharpRevenueData'] : null;
+            $sharpMapped = is_array($sharp['mappedData'] ?? null) ? $sharp['mappedData'] : null;
+            $visitMapped = is_array($visit['mappedData'] ?? null) ? $visit['mappedData'] : null;
+            $status = ($sharpMapped['status'] ?? null) ?? ($visitMapped['status'] ?? null);
 
             if ($status !== null) {
-                $statusLower = strtolower($status);
-                if ($statusLower === 'complete') {
+                $statusLower = strtolower(TypeCoerce::asString($status));
+                if ($statusLower === 'complete' || $statusLower === 'error') {
                     // Extract the SharpRevenue response in the same format saveEligibility expects
-                    return $visit['sharpRevenueData'] ?? $visit;
-                }
-                if ($statusLower === 'error') {
-                    return $visit['sharpRevenueData'] ?? $visit;
+                    /** @var array<string, mixed> $result */
+                    $result = $sharp ?? $visit;
+                    return $result;
                 }
             }
         }
@@ -287,17 +349,19 @@ class EligibilityTransfer extends BaseService
     private static function mergeProductResults(array $newResult, array $existingIndividual, array $productsRun): array
     {
         $mappedData = $newResult['mappedData'] ?? null;
-        if (!is_array($mappedData) || !isset($mappedData['individuals']) || !is_array($mappedData['individuals'])) {
+        if (!is_array($mappedData)) {
+            return $newResult;
+        }
+        $individuals = $mappedData['individuals'] ?? null;
+        if (!is_array($individuals) || $individuals === []) {
             return $newResult;
         }
 
-        $individuals = &$newResult['mappedData']['individuals'];
         $key = array_key_first($individuals);
-        if ($key === null || !is_array($individuals[$key])) {
+        $newIndividual = $individuals[$key] ?? null;
+        if (!is_array($newIndividual)) {
             return $newResult;
         }
-
-        $newIndividual = &$individuals[$key];
 
         // For each product that was NOT run, preserve the existing data
         foreach (self::PRODUCT_KEYS as $productId => $propertyKey) {
@@ -310,6 +374,10 @@ class EligibilityTransfer extends BaseService
         if (!in_array(3, $productsRun) && isset($existingIndividual['insuranceFinderStatus'])) {
             $newIndividual['insuranceFinderStatus'] = $existingIndividual['insuranceFinderStatus'];
         }
+
+        $individuals[$key] = $newIndividual;
+        $mappedData['individuals'] = $individuals;
+        $newResult['mappedData'] = $mappedData;
 
         return $newResult;
     }
@@ -324,7 +392,8 @@ class EligibilityTransfer extends BaseService
             EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR, null, null, true, 'no results', null, null, null);
             return;
         }
-        $payload = json_encode($result, JSON_UNESCAPED_SLASHES);
+        $encoded = json_encode($result, JSON_UNESCAPED_SLASHES);
+        $payload = $encoded !== false ? $encoded : null;
 
         if (!isset($result['responseMessage'])) {
             EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR, null, $payload, true, 'missing responseMessage Property', null, null, null);
@@ -367,25 +436,35 @@ class EligibilityTransfer extends BaseService
         $raw271 = null;
 
         // Process eligibility results (Product 1) if present
-        if (isset($individual['eligibility']) && is_array($individual['eligibility']) && !empty($individual['eligibility'])) {
+        if (isset($individual['eligibility']) && is_array($individual['eligibility']) && $individual['eligibility'] !== []) {
             /** @var array<int|string, array<string, mixed>> */
             $eligibilities = $individual['eligibility'];
-            $eligibility = $eligibilities[array_key_first($eligibilities)] ?? null;
-            $eligibility_json = json_encode($eligibility, JSON_UNESCAPED_SLASHES);
+            $firstKey = array_key_first($eligibilities);
+            $eligibility = $firstKey !== null ? $eligibilities[$firstKey] : null;
+            $encodedElig = json_encode($eligibility, JSON_UNESCAPED_SLASHES);
+            $eligibility_json = $encodedElig !== false ? $encodedElig : null;
 
-            if (is_array($eligibility) && isset($eligibility['raw271']) && !empty($eligibility['raw271'])) {
-                $raw271 = $eligibility['raw271'];
-                $siteDir = OEGlobalsBag::getInstance()->get('OE_SITE_DIR');
+            if (is_array($eligibility) && isset($eligibility['raw271']) && $eligibility['raw271'] !== '') {
+                $raw271 = TypeCoerce::asString($eligibility['raw271']);
+                $siteDir = OEGlobalsBag::getInstance()->getString('OE_SITE_DIR');
                 $reportFolder = 'f271';
                 $savePath = $siteDir . '/documents/edi/history/' . $reportFolder . '/';
                 if (!file_exists($savePath)) {
                     mkdir($savePath, 0750, true);
                 }
 
-                $fileText = $raw271;
-                $fileName = $result['claimRevResultId'];
+                // The id comes from a remote API response; restrict it to a
+                // safe filename charset so an upstream value containing path
+                // separators can't redirect file_put_contents outside
+                // $savePath. Fall back to a server-generated name if the
+                // sanitised value is empty.
+                $fileNameRaw = TypeCoerce::asString($result['claimRevResultId'] ?? '');
+                $fileName = preg_replace('/[^A-Za-z0-9_-]/', '', $fileNameRaw) ?? '';
+                if ($fileName === '') {
+                    $fileName = 'elig_' . (string) $eid . '_' . bin2hex(random_bytes(8));
+                }
                 $filePathName = $savePath . $fileName . '.txt';
-                file_put_contents($filePathName, $fileText);
+                file_put_contents($filePathName, $raw271);
                 chmod($filePathName, 0640);
 
                 // Populate native OpenEMR eligibility tables so the Insurance
@@ -394,8 +473,10 @@ class EligibilityTransfer extends BaseService
             }
         }
 
-        $payload = json_encode($result, JSON_UNESCAPED_SLASHES);
-        $individual_json = json_encode($individual, JSON_UNESCAPED_SLASHES);
+        $encodedFinal = json_encode($result, JSON_UNESCAPED_SLASHES);
+        $payload = $encodedFinal !== false ? $encodedFinal : null;
+        $encodedIndividual = json_encode($individual, JSON_UNESCAPED_SLASHES);
+        $individual_json = $encodedIndividual !== false ? $encodedIndividual : null;
 
         EligibilityData::updateEligibilityRecord($eid, self::STATUS_SUCCESS, null, $payload, true, $responseMessage, $raw271, $eligibility_json, $individual_json);
     }
@@ -410,23 +491,23 @@ class EligibilityTransfer extends BaseService
      * @param string $raw271 Raw X12 271 EDI content
      * @param int|string $eid ClaimRev eligibility record ID
      */
-    public static function populateNativeEligibility(string $raw271, $eid): void
+    public static function populateNativeEligibility(string $raw271, int|string $eid): void
     {
         // Look up the PID for this eligibility record
-        $row = sqlQuery(
+        $row = QueryUtils::querySingleRow(
             'SELECT pid FROM mod_claimrev_eligibility WHERE id = ?',
             [$eid]
         );
-        if ($row === false || empty($row['pid'])) {
+        $pid = TypeCoerce::asInt($row['pid'] ?? 0);
+        if ($pid === 0) {
             return;
         }
-        $pid = (int) $row['pid'];
 
         // Inject a REF*EJ*{pid} segment so the native 271 parser can
         // reliably identify the patient.  Insert it right after the first
         // DMG segment (subscriber demographics), which is where REF*EJ
         // would normally appear in a standard 271.
-        if (strpos($raw271, 'REF*EJ*') === false) {
+        if (!str_contains($raw271, 'REF*EJ*')) {
             // Insert after the first DMG segment's tilde terminator
             $dmgPos = strpos($raw271, 'DMG*');
             if ($dmgPos !== false) {
@@ -441,7 +522,7 @@ class EligibilityTransfer extends BaseService
 
         try {
             EDI270::parseEdi271($raw271);
-        } catch (\Throwable) {
+        } catch (\RuntimeException | \LogicException) {
             // Non-fatal — ClaimRev's own eligibility display still works.
             // The native Insurance card tab just won't be populated.
         }

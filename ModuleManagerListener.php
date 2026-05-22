@@ -18,19 +18,12 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
-/*
- * Do not declare a namespace
- * If you want Laminas manager to set namespace set it in getModuleNamespace
- * otherwise uncomment below and set path.
- *
- * */
+declare(strict_types=1);
 
-/*
-    $classLoader = new \OpenEMR\Core\ModulesClassLoader($GLOBALS['fileroot']);
-    $classLoader->registerNamespaceIfNotExists("OpenEMR\\Modules\\ClaimRevConnector\\", __DIR__ . DIRECTORY_SEPARATOR . 'src');
-*/
-
+use OpenEMR\BC\ServiceContainer;
+use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Core\AbstractModuleActionListener;
+use OpenEMR\Modules\ClaimRevConnector\ClaimRevModuleSetup;
 
 /* Allows maintenance of background tasks depending on Module Manager action. */
 
@@ -50,11 +43,12 @@ class ModuleManagerListener extends AbstractModuleActionListener
     public function moduleManagerAction($methodName, $modId, string $currentActionStatus = 'Success'): string
     {
         if (method_exists(self::class, $methodName)) {
-            return self::$methodName($modId, $currentActionStatus);
-        } else {
-            // no reason to report, action method is missing.
-            return $currentActionStatus;
+            $result = self::$methodName($modId, $currentActionStatus);
+            return is_string($result) ? $result : $currentActionStatus;
         }
+
+        // no reason to report, action method is missing.
+        return $currentActionStatus;
     }
 
     /**
@@ -103,11 +97,18 @@ class ModuleManagerListener extends AbstractModuleActionListener
      */
     private function enable($modId, $currentActionStatus): mixed
     {
-        $logMessage = 'Claimrev Background tasks have been enabled';
         // Register background services
-        $sql = "UPDATE `background_services` SET `active` = '1' WHERE `name` = ? OR `name` = ? OR `name` = ? OR `name` = ? OR `name` = ?";
-        $status = sqlQuery($sql, ['ClaimRev_Send', 'ClaimRev_Receive', 'ClaimRev_Elig_Send_Receive', 'ClaimRev_Watchdog', 'ClaimRev_Notifications']);
-        error_log($logMessage . ' ' . text($status));
+        QueryUtils::sqlStatementThrowException(
+            "UPDATE `background_services` SET `active` = '1' WHERE `name` IN (?, ?, ?, ?, ?, ?)",
+            ['ClaimRev_Send', 'ClaimRev_Receive', 'ClaimRev_Elig_Send_Receive', 'ClaimRev_Watchdog', 'ClaimRev_Notifications', 'ClaimRev_Elig_Sweep']
+        );
+        ServiceContainer::getLogger()->info('ClaimRev background tasks enabled');
+
+        // One-time persistence: opt the install into core SFTP claim flow if
+        // it has never been configured. Respects an explicit '0' set by an
+        // admin who has deliberately disabled core SFTP.
+        ClaimRevModuleSetup::ensureCoreSftpEnabled();
+
         // Return the current action status from Module Manager in case of error from its action.
         return $currentActionStatus;
     }
@@ -119,11 +120,12 @@ class ModuleManagerListener extends AbstractModuleActionListener
      */
     private function disable($modId, $currentActionStatus): mixed
     {
-        $logMessage = 'Claimrev Background tasks have been disabled';
         // Unregister background services
-        $sql = "UPDATE `background_services` SET `active` = '0' WHERE `name` = ? OR `name` = ? OR `name` = ? OR `name` = ? OR `name` = ?";
-        $status = sqlQuery($sql, ['ClaimRev_Send', 'ClaimRev_Receive', 'ClaimRev_Elig_Send_Receive', 'ClaimRev_Watchdog', 'ClaimRev_Notifications']);
-        error_log($logMessage . ' ' . text($status));
+        QueryUtils::sqlStatementThrowException(
+            "UPDATE `background_services` SET `active` = '0' WHERE `name` IN (?, ?, ?, ?, ?, ?)",
+            ['ClaimRev_Send', 'ClaimRev_Receive', 'ClaimRev_Elig_Send_Receive', 'ClaimRev_Watchdog', 'ClaimRev_Notifications', 'ClaimRev_Elig_Sweep']
+        );
+        ServiceContainer::getLogger()->info('ClaimRev background tasks disabled');
         return $currentActionStatus;
     }
 
@@ -132,12 +134,13 @@ class ModuleManagerListener extends AbstractModuleActionListener
      * @param $currentActionStatus
      * @return mixed
      */
-    private function unregister($modId, $currentActionStatus)
+    private function unregister($modId, $currentActionStatus): mixed
     {
-        $logMessage = 'Claimrev Background tasks have been removed'; // Initialize an empty string to store log messages
-        $sql = "DELETE FROM `background_services` WHERE `name` = ? OR `name` = ? OR `name` = ? OR `name` = ? OR `name` = ?";
-        $status = sqlQuery($sql, ['ClaimRev_Send', 'ClaimRev_Receive', 'ClaimRev_Elig_Send_Receive', 'ClaimRev_Watchdog', 'ClaimRev_Notifications']);
-        error_log($logMessage . ' ' . text($status));
+        QueryUtils::sqlStatementThrowException(
+            "DELETE FROM `background_services` WHERE `name` IN (?, ?, ?, ?, ?, ?)",
+            ['ClaimRev_Send', 'ClaimRev_Receive', 'ClaimRev_Elig_Send_Receive', 'ClaimRev_Watchdog', 'ClaimRev_Notifications', 'ClaimRev_Elig_Sweep']
+        );
+        ServiceContainer::getLogger()->info('ClaimRev background tasks removed');
         return $currentActionStatus;
     }
 }

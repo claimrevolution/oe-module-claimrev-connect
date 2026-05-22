@@ -11,11 +11,15 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 require_once "../../../../globals.php";
 
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevApi;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevException;
+use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
+use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 
 header('Content-Type: application/json');
 
@@ -25,10 +29,16 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
     exit;
 }
 
-$objectId = $_POST['objectId'] ?? '';
-$isWorked = ($_POST['isWorked'] ?? '0') === '1';
+if (!CsrfHelper::verifyCsrfToken(ModuleInput::postString('csrf_token'), 'claims')) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+    exit;
+}
 
-if (empty($objectId)) {
+$objectId = ModuleInput::postString('objectId');
+$isWorked = ModuleInput::postString('isWorked', '0') === '1';
+
+if ($objectId === '') {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Missing objectId']);
     exit;

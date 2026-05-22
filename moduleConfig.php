@@ -12,13 +12,15 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 use OpenEMR\Core\ModulesClassLoader;
 use OpenEMR\Core\OEGlobalsBag;
 
 require_once dirname(__FILE__, 4) . '/globals.php';
 
 /* required for config before install */
-$classLoader = new ModulesClassLoader(OEGlobalsBag::getInstance()->get('fileroot'));
+$classLoader = new ModulesClassLoader(OEGlobalsBag::getInstance()->getProjectDir());
 $classLoader->registerNamespaceIfNotExists("OpenEMR\\Modules\\ClaimRevConnector\\", __DIR__ . DIRECTORY_SEPARATOR . 'src');
 
 $module_config = 1;

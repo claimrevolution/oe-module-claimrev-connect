@@ -10,15 +10,47 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-use OpenEMR\Modules\ClaimRevConnector\EligibilityData;
-use OpenEMR\Modules\ClaimRevConnector\EligibilityObjectCreator;
-use OpenEMR\Modules\ClaimRevConnector\ValueMapping;
+use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Core\OEGlobalsBag;
 
+/**
+ * @phpstan-type AppointmentRow array{
+ *     pc_eid: int,
+ *     appointmentDate: string,
+ *     pc_startTime: string,
+ *     pc_pid: int,
+ *     pc_facility: int,
+ *     pc_aid: int,
+ *     pc_apptstatus: string,
+ *     pc_title: string,
+ *     fname: string,
+ *     lname: string,
+ *     mname: string,
+ *     dob: string,
+ *     sex: string,
+ *     pid: int,
+ *     facility_name: string,
+ *     provider_name: string,
+ *     elig_status: ?string,
+ *     elig_payer_responsibility: ?string,
+ *     elig_last_checked: ?string,
+ *     elig_response_message: ?string,
+ *     elig_eligibility_json: ?string,
+ *     elig_individual_json: ?string
+ * }
+ * @phpstan-type FacilityRow array{id: int, name: string}
+ * @phpstan-type ProviderRow array{id: int, provider_name: string}
+ */
 class AppointmentsPage
 {
-    public static function getUpcomingAppointments($startDate, $endDate, $facilityId = null, $providerId = null)
+    /**
+     * @return list<AppointmentRow>
+     */
+    public static function getUpcomingAppointments(string $startDate, string $endDate, ?string $facilityId = null, ?string $providerId = null, string $eligibilityFilter = 'all'): array
     {
         $sql = "SELECT
                     e.pc_eid,
@@ -54,28 +86,79 @@ class AppointmentsPage
                 WHERE e.pc_eventDate >= ?
                 AND e.pc_eventDate <= ?";
 
-        $sqlarr = array($startDate, $endDate);
+        $sqlarr = [$startDate, $endDate];
 
-        if ($facilityId != null && $facilityId != "") {
+        if ($facilityId !== null && $facilityId !== '') {
             $sql .= " AND e.pc_facility = ?";
-            array_push($sqlarr, $facilityId);
+            $sqlarr[] = $facilityId;
         }
 
-        if ($providerId != null && $providerId != "") {
+        if ($providerId !== null && $providerId !== '') {
             $sql .= " AND e.pc_aid = ?";
-            array_push($sqlarr, $providerId);
+            $sqlarr[] = $providerId;
+        }
+
+        // Apply eligibility status filter
+        $staleAge = TypeCoerce::asInt(OEGlobalsBag::getInstance()->get(GlobalConfig::CONFIG_ENABLE_RESULTS_ELIGIBILITY) ?? 30, 30);
+        if ($staleAge < 1) {
+            $staleAge = 30;
+        }
+
+        switch ($eligibilityFilter) {
+            case 'needs_attention':
+                $sql .= " AND (elig.id IS NULL OR elig.status IN ('error', 'senderror') OR DATEDIFF(NOW(), COALESCE(elig.last_checked, elig.create_date)) >= ?)";
+                $sqlarr[] = $staleAge;
+                break;
+            case 'not_checked':
+                $sql .= " AND elig.id IS NULL";
+                break;
+            case 'stale':
+                $sql .= " AND elig.id IS NOT NULL AND elig.status NOT IN ('waiting', 'creating') AND DATEDIFF(NOW(), COALESCE(elig.last_checked, elig.create_date)) >= ?";
+                $sqlarr[] = $staleAge;
+                break;
+            case 'active_coverage':
+                $sql .= " AND elig.status = 'SUCCESS'";
+                break;
+            // 'all' — no additional filter
         }
 
         $sql .= " ORDER BY e.pc_eventDate ASC, e.pc_startTime ASC";
 
-        $result = sqlStatement($sql, $sqlarr);
+        $rows = QueryUtils::fetchRecords($sql, $sqlarr);
+        $result = [];
+        foreach ($rows as $r) {
+            $result[] = [
+                'pc_eid' => TypeCoerce::asInt($r['pc_eid'] ?? 0),
+                'appointmentDate' => TypeCoerce::asString($r['appointmentDate'] ?? ''),
+                'pc_startTime' => TypeCoerce::asString($r['pc_startTime'] ?? ''),
+                'pc_pid' => TypeCoerce::asInt($r['pc_pid'] ?? 0),
+                'pc_facility' => TypeCoerce::asInt($r['pc_facility'] ?? 0),
+                'pc_aid' => TypeCoerce::asInt($r['pc_aid'] ?? 0),
+                'pc_apptstatus' => TypeCoerce::asString($r['pc_apptstatus'] ?? ''),
+                'pc_title' => TypeCoerce::asString($r['pc_title'] ?? ''),
+                'fname' => TypeCoerce::asString($r['fname'] ?? ''),
+                'lname' => TypeCoerce::asString($r['lname'] ?? ''),
+                'mname' => TypeCoerce::asString($r['mname'] ?? ''),
+                'dob' => TypeCoerce::asString($r['dob'] ?? ''),
+                'sex' => TypeCoerce::asString($r['sex'] ?? ''),
+                'pid' => TypeCoerce::asInt($r['pid'] ?? 0),
+                'facility_name' => TypeCoerce::asString($r['facility_name'] ?? ''),
+                'provider_name' => TypeCoerce::asString($r['provider_name'] ?? ''),
+                'elig_status' => isset($r['elig_status']) ? TypeCoerce::asString($r['elig_status']) : null,
+                'elig_payer_responsibility' => isset($r['elig_payer_responsibility']) ? TypeCoerce::asString($r['elig_payer_responsibility']) : null,
+                'elig_last_checked' => isset($r['elig_last_checked']) ? TypeCoerce::asString($r['elig_last_checked']) : null,
+                'elig_response_message' => isset($r['elig_response_message']) ? TypeCoerce::asString($r['elig_response_message']) : null,
+                'elig_eligibility_json' => isset($r['elig_eligibility_json']) ? TypeCoerce::asString($r['elig_eligibility_json']) : null,
+                'elig_individual_json' => isset($r['elig_individual_json']) ? TypeCoerce::asString($r['elig_individual_json']) : null,
+            ];
+        }
         return $result;
     }
 
-    public static function runEligibilityForAppointment($eid)
+    public static function runEligibilityForAppointment(string $eid): void
     {
         $appointmentData = EligibilityData::getPatientIdFromAppointment($eid);
-        if ($appointmentData == null) {
+        if ($appointmentData === null) {
             return;
         }
 
@@ -89,44 +172,64 @@ class AppointmentsPage
             $pr = $row['payer_responsibility'];
             $formattedPr = ValueMapping::mapPayerResponsibility($pr);
             EligibilityData::removeEligibilityCheck($pid, $formattedPr);
-            $requestObjects = EligibilityObjectCreator::buildObject($pid, $pr, $eventDate, $facilityId, $providerId);
+            $requestObjects = EligibilityObjectCreator::buildObject($pid, $pr, $eventDate !== '' ? $eventDate : null, $facilityId !== 0 ? $facilityId : null, $providerId !== 0 ? $providerId : null);
             EligibilityObjectCreator::saveToDatabase($requestObjects, $pid);
         }
     }
 
-    public static function getFacilities()
+    /**
+     * @return list<FacilityRow>
+     */
+    public static function getFacilities(): array
     {
-        $sql = "SELECT id, name FROM facility WHERE service_location = 1 ORDER BY name";
-        $result = sqlStatement($sql);
-        return $result;
+        $rows = QueryUtils::fetchRecords(
+            "SELECT id, name FROM facility WHERE service_location = 1 ORDER BY name"
+        );
+        return array_map(static fn(array $r): array => [
+            'id' => TypeCoerce::asInt($r['id'] ?? 0),
+            'name' => TypeCoerce::asString($r['name'] ?? ''),
+        ], $rows);
     }
 
-    public static function getProviders()
+    /**
+     * @return list<ProviderRow>
+     */
+    public static function getProviders(): array
     {
-        $sql = "SELECT id, CONCAT(fname, ' ', lname) as provider_name
+        $rows = QueryUtils::fetchRecords(
+            "SELECT id, CONCAT(fname, ' ', lname) as provider_name
                 FROM users
                 WHERE authorized = 1
                 AND active = 1
                 AND npi IS NOT NULL
                 AND npi != ''
-                ORDER BY lname, fname";
-        $result = sqlStatement($sql);
-        return $result;
+                ORDER BY lname, fname"
+        );
+        return array_map(static fn(array $r): array => [
+            'id' => TypeCoerce::asInt($r['id'] ?? 0),
+            'provider_name' => TypeCoerce::asString($r['provider_name'] ?? ''),
+        ], $rows);
     }
 
-    public static function getEligibilitySummary($eligJson)
+    /**
+     * @return list<\stdClass>|null
+     */
+    public static function getEligibilitySummary(?string $eligJson): ?array
     {
-        if ($eligJson == null) {
+        if ($eligJson === null || $eligJson === '') {
             return null;
         }
 
         $individual = json_decode($eligJson);
-        if ($individual == null || !property_exists($individual, 'eligibility')) {
+        if (!is_object($individual) || !property_exists($individual, 'eligibility') || !is_iterable($individual->eligibility)) {
             return null;
         }
 
         $results = [];
         foreach ($individual->eligibility as $eligibilityData) {
+            if (!is_object($eligibilityData)) {
+                continue;
+            }
             $summary = new \stdClass();
             $summary->status = '';
             $summary->payerName = '';
@@ -136,7 +239,7 @@ class AppointmentsPage
             if (property_exists($eligibilityData, 'status')) {
                 $summary->status = $eligibilityData->status;
             }
-            if (property_exists($eligibilityData, 'payerInfo') && property_exists($eligibilityData->payerInfo, 'payerName')) {
+            if (property_exists($eligibilityData, 'payerInfo') && is_object($eligibilityData->payerInfo) && property_exists($eligibilityData->payerInfo, 'payerName')) {
                 $summary->payerName = $eligibilityData->payerInfo->payerName;
             }
             if (property_exists($eligibilityData, 'subscriberId')) {

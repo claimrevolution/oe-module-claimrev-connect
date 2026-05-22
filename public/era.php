@@ -12,34 +12,49 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 require_once "../../../../globals.php";
 
 use OpenEMR\Common\Acl\AccessDeniedHelper;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Core\Header;
+use OpenEMR\Core\OEGlobalsBag;
+use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevApiException;
+use OpenEMR\Modules\ClaimRevConnector\EraMockService;
 use OpenEMR\Modules\ClaimRevConnector\EraPage;
+use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 
 $tab = "eras";
 $selected = " selected ";
 $datas = [];
 $errorMessage = null;
 
+$bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+$globalConfig = $bootstrap->getGlobalConfig();
+$testMode = $globalConfig->isTestModeEnabled();
+
 // Ensure user has proper access
 if (!AclMain::aclCheckCore('acct', 'bill')) {
     AccessDeniedHelper::denyWithTemplate("ACL check failed for acct/bill: ClaimRev Connect - ERAs", xl("ClaimRev Connect - ERAs"));
 }
 
-$dlStatus = 2;
-if (!empty($_POST)) {
-    $dlStatus = $_POST['downloadStatus'];
+$startDate = ModuleInput::postString('startDate');
+$endDate = ModuleInput::postString('endDate');
+$dlStatus = ModuleInput::postInt('downloadStatus', 2);
+$searchPayload = [
+    'startDate' => $startDate,
+    'endDate' => $endDate,
+    'downloadStatus' => $dlStatus,
+];
 
-    if (isset($_POST['SubmitButton'])) {
+if (ModuleInput::isPostRequest() && ModuleInput::postExists('SubmitButton')) {
+    if ($testMode) {
+        $datas = EraMockService::generateMockResults($searchPayload);
+    } else {
         try {
-            $datas = EraPage::searchEras($_POST);
-            if ($datas === null) {
-                $datas = [];
-            }
+            $datas = EraPage::searchEras($searchPayload) ?? [];
         } catch (ClaimRevApiException) {
             $errorMessage = xlt('Failed to search ERAs. Please check your ClaimRev connection settings.');
             $datas = [];
@@ -54,7 +69,7 @@ if (!empty($_POST)) {
         <?php Header::setupHeader(['common', 'opener']); ?>
         <script>
             function downloadEra(objectId) {
-                window.location = 'EraDownload.php?eraId=' + objectId;
+                window.location = 'EraDownload.php?eraId=' + encodeURIComponent(objectId);
             }
         </script>
     </head>
@@ -68,21 +83,21 @@ if (!empty($_POST)) {
                             <div class="col">
                                 <div class="form-group">
                                     <label for="startDate"><?php echo xlt("Receive Date Start") ?>:</label>
-                                    <input type="date" class="form-control"  id="startDate" name="startDate" value="<?php echo isset($_POST['startDate']) ? attr($_POST['startDate']) : '' ?>"  placeholder="yyyy-mm-dd"/>
+                                    <input type="date" class="form-control"  id="startDate" name="startDate" value="<?php echo attr($startDate); ?>"  placeholder="yyyy-mm-dd"/>
                                 </div>
                             </div>
                             <div class="col">
                                 <div class="form-group">
                                     <label for="endDate"><?php echo xlt("Receive Date End"); ?>:</label>
-                                    <input type="date" class="form-control"  id="endDate" name="endDate" value="<?php echo isset($_POST['endDate']) ? attr($_POST['endDate']) : '' ?>" placeholder="yyyy-mm-dd"/>
+                                    <input type="date" class="form-control"  id="endDate" name="endDate" value="<?php echo attr($endDate); ?>" placeholder="yyyy-mm-dd"/>
                                 </div>
                             </div>
                             <div class="col">
                                 <div class="form-group">
                                     <label for="downloadStatus"><?php echo xlt("Download Status") ?>:</label>
                                     <select name="downloadStatus" id="downloadStatus"  class="form-control">
-                                        <option value=2 <?php echo ($dlStatus == 2) ? $selected : ''; ?> ><?php echo xlt("Waiting") ?></option>
-                                        <option value=3 <?php echo ($dlStatus == 3) ? $selected : ''; ?>><?php echo xlt("Downloaded") ?></option>
+                                        <option value="2" <?php echo $dlStatus === 2 ? $selected : ''; ?>><?php echo xlt("Waiting") ?></option>
+                                        <option value="3" <?php echo $dlStatus === 3 ? $selected : ''; ?>><?php echo xlt("Downloaded") ?></option>
                                     </select>
                                 </div>
                             </div>
@@ -100,7 +115,7 @@ if (!empty($_POST)) {
 
             if ($errorMessage !== null) {
                 echo '<div class="alert alert-danger mt-3">' . text($errorMessage) . '</div>';
-            } elseif (empty($datas)) {
+            } elseif ($datas === []) {
                 echo "<div class='mt-3'>" . xlt("No results found") . "</div>";
             } else { ?>
                 <table class="table table-striped mt-3">
@@ -117,17 +132,30 @@ if (!empty($_POST)) {
                     </thead>
                     <tbody>
                         <?php
-                        foreach ($datas as $data) {
-                            ?>
+                        $eraStr = static function (\stdClass $o, string $prop): string {
+                            if (!property_exists($o, $prop)) {
+                                return '';
+                            }
+                            $v = $o->$prop;
+                            if (is_string($v)) {
+                                return $v;
+                            }
+                            if (is_int($v) || is_float($v)) {
+                                return (string) $v;
+                            }
+                            return '';
+                        };
+                foreach ($datas as $data) {
+                    ?>
                             <tr>
-                                <td scope="row"><?php echo text(substr((string) $data->receivedDate, 0, 10)); ?></td>
-                                <td scope="row"><?php echo text($data->payerName); ?></td>
-                                <td scope="row"><?php echo text($data->payerNumber); ?></td>
-                                <td scope="row"><?php echo text($data->billedAmt); ?></td>
-                                <td scope="row"><?php echo text($data->payerPaidAmt); ?></td>
-                                <td scope="row"><?php echo text($data->patientResponsibility); ?></td>
+                                <td scope="row"><?php echo text(substr($eraStr($data, 'receivedDate'), 0, 10)); ?></td>
+                                <td scope="row"><?php echo text($eraStr($data, 'payerName')); ?></td>
+                                <td scope="row"><?php echo text($eraStr($data, 'payerNumber')); ?></td>
+                                <td scope="row"><?php echo text($eraStr($data, 'billedAmt')); ?></td>
+                                <td scope="row"><?php echo text($eraStr($data, 'payerPaidAmt')); ?></td>
+                                <td scope="row"><?php echo text($eraStr($data, 'patientResponsibility')); ?></td>
                                 <td scope="row">
-                                    <button type="button" onClick="downloadEra('<?php echo attr($data->id); ?>');" name="downloadFile" class="btn btn-primary">
+                                    <button type="button" onClick="downloadEra('<?php echo attr($eraStr($data, 'id')); ?>');" name="downloadFile" class="btn btn-primary">
                                         <?php echo xlt("Download ERA"); ?>
                                     </button>
                                 </td>

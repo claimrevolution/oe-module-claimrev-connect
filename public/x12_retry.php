@@ -10,14 +10,18 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
+declare(strict_types=1);
+
 require_once "../../../../globals.php";
 
 use OpenEMR\Common\Acl\AclMain;
-use OpenEMR\Common\Csrf\CsrfUtils;
+use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
+use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 
 header('Content-Type: application/json');
 
-if (!CsrfUtils::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+if (!CsrfHelper::verifyCsrfToken(ModuleInput::postString('csrf_token'))) {
     echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
     exit;
 }
@@ -27,17 +31,15 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
     exit;
 }
 
-$id = $_POST['id'] ?? null;
-if (empty($id)) {
+$id = ModuleInput::postInt('id');
+if ($id === 0) {
     echo json_encode(['success' => false, 'message' => 'Missing tracker ID']);
     exit;
 }
 
-$sql = "UPDATE x12_remote_tracker SET status = 'waiting', messages = NULL, updated_at = NOW() WHERE id = ?";
-$result = sqlStatement($sql, [$id]);
+QueryUtils::sqlStatementThrowException(
+    "UPDATE x12_remote_tracker SET status = 'waiting', messages = NULL, updated_at = NOW() WHERE id = ?",
+    [$id]
+);
 
-if ($result !== false) {
-    echo json_encode(['success' => true]);
-} else {
-    echo json_encode(['success' => false, 'message' => 'Database update failed']);
-}
+echo json_encode(['success' => true]);

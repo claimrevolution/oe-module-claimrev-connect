@@ -10,9 +10,23 @@
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
 
-if ($benefit->procedureInfo != null) {
-    $procedureInfo = $benefit->procedureInfo;
-    ?>
+/** @var \stdClass $benefit */
+
+declare(strict_types=1);
+
+$procedureInfo = property_exists($benefit, 'procedureInfo') && is_object($benefit->procedureInfo) ? $benefit->procedureInfo : null;
+if ($procedureInfo === null) {
+    return;
+}
+
+$str = static function (object $o, string $prop): string {
+    if (!property_exists($o, $prop)) {
+        return '';
+    }
+    $v = $o->$prop;
+    return is_string($v) ? $v : '';
+};
+?>
     <div class="row">
         <div class="col">
             <div class="card">
@@ -20,22 +34,16 @@ if ($benefit->procedureInfo != null) {
                     <h6><?php echo xlt("Procedure Information"); ?></h6>
                     <div class="row">
                         <div class="col">
-                            <?php echo text($procedureInfo->serviceIdQualifier); ?> : <?php echo text($procedureInfo->procedureCode); ?>
+                            <?php echo text($str($procedureInfo, 'serviceIdQualifier')); ?> : <?php echo text($str($procedureInfo, 'procedureCode')); ?>
                         </div>
                         <div class="col">
                             <ol>
                                 <?php
-                                if ($procedureInfo->modifier1 != "") {
-                                    echo("<li>" . text($procedureInfo->modifier1) . "</li>");
-                                }
-                                if ($procedureInfo->modifier2 != "") {
-                                    echo("<li>" . text($procedureInfo->modifier2) . "</li>");
-                                }
-                                if ($procedureInfo->modifier3 != "") {
-                                    echo("<li>" . text($procedureInfo->modifier3) . "</li>");
-                                }
-                                if ($procedureInfo->modifier4 != "") {
-                                    echo("<li>" . text($procedureInfo->modifier4) . "</li>");
+                                foreach (['modifier1', 'modifier2', 'modifier3', 'modifier4'] as $field) {
+                                    $v = $str($procedureInfo, $field);
+                                    if ($v !== '') {
+                                        echo "<li>" . text($v) . "</li>";
+                                    }
                                 }
                                 ?>
                             </ol>
@@ -43,17 +51,11 @@ if ($benefit->procedureInfo != null) {
                         <div class="col">
                             <ol>
                                 <?php
-                                if ($procedureInfo->pointer1 != "") {
-                                    echo("<li>" . text($procedureInfo->pointer1) . "</li>");
-                                }
-                                if ($procedureInfo->pointer2 != "") {
-                                    echo("<li>" . text($procedureInfo->pointer2) . "</li>");
-                                }
-                                if ($procedureInfo->pointer3 != "") {
-                                    echo("<li>" . text($procedureInfo->pointer3) . "</li>");
-                                }
-                                if ($procedureInfo->pointer4 != "") {
-                                    echo("<li>" . text($procedureInfo->pointer4) . "</li>");
+                                foreach (['pointer1', 'pointer2', 'pointer3', 'pointer4'] as $field) {
+                                    $v = $str($procedureInfo, $field);
+                                    if ($v !== '') {
+                                        echo "<li>" . text($v) . "</li>";
+                                    }
                                 }
                                 ?>
                             </ol>
@@ -63,6 +65,3 @@ if ($benefit->procedureInfo != null) {
             </div>
         </div>
     </div>
-    <?php
-}
-?>
