@@ -16,7 +16,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-use OpenEMR\Core\OEGlobalsBag;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 
 class ConnectivityInfo
 {
@@ -30,7 +30,7 @@ class ConnectivityInfo
 
     public function __construct()
     {
-        $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+        $bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
         $globalsConfig = $bootstrap->getGlobalConfig();
 
         $clientIdRaw = $globalsConfig->getClientId();

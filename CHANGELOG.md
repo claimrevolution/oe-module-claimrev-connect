@@ -1,3 +1,7 @@
+# 2.1.4
+Cross-version compatibility fix:
+- Resolve the OpenEMR kernel via a new `Compat\KernelCompat::resolve()` helper instead of calling `OEGlobalsBag::getInstance()->getKernel()` directly. `getKernel()` only exists on core's flex/master line; the 8.0.x patch releases ship an `OEGlobalsBag` without it. Because the real class is present on 8.0.x, the `OEGlobalsBagShim` swap never activates there, so the direct call fatalled with "Call to undefined method OEGlobalsBag::getKernel()" during login bootstrap — taking the whole site to a 500. The helper reads the kernel from the `'kernel'` global (with a type guard), exactly as flex's `getKernel()` does internally, so the same binary works on 7.x, 8.0.x, and flex. Fixes the regression introduced in 2.1.3.
+
 # 2.1.3
 Cross-version compatibility and security hardening:
 - Read stored credentials with `CryptoGen::decryptStandard` instead of `decryptFromDatabase`. The newer helper was added to OE core in the 8.x line but does not exist on OE 7.x; reverting to `decryptStandard` lets the same module binary work on both branches.

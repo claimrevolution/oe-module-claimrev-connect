@@ -37,6 +37,7 @@ use OpenEMR\Events\RestApiExtend\RestApiResourceServiceEvent;
 use OpenEMR\Events\RestApiExtend\RestApiScopeEvent;
 use OpenEMR\Menu\MenuEvent;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevRteService;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Services\Globals\GlobalSetting;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
@@ -47,7 +48,7 @@ class Bootstrap
 {
     const MODULE_INSTALLATION_PATH = "/interface/modules/custom_modules/";
     const MODULE_NAME = "oe-module-claimrev-connect";
-    const MODULE_VERSION = "2.1.3";
+    const MODULE_VERSION = "2.1.4";
 
     /**
      * @var GlobalConfig Holds our module global configuration values that can be used throughout the module.
@@ -75,7 +76,7 @@ class Bootstrap
         ?Kernel $kernel = null,
         ?LoggerInterface $logger = null,
     ) {
-        $kernel ??= OEGlobalsBag::getInstance()->getKernel();
+        $kernel ??= KernelCompat::resolve();
 
         // NOTE: eventually you will be able to pull the twig container directly from the kernel instead of instantiating
         // it here.

@@ -19,6 +19,7 @@ namespace OpenEMR\Modules\ClaimRevConnector;
 use OpenEMR\Billing\EDI270;
 use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Core\OEGlobalsBag;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Services\BaseService;
 
 class EligibilityTransfer extends BaseService
@@ -43,7 +44,7 @@ class EligibilityTransfer extends BaseService
             return;
         }
 
-        $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+        $bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
         $testMode = $bootstrap->getGlobalConfig()->isTestModeEnabled();
 
         if ($testMode) {
@@ -158,7 +159,7 @@ class EligibilityTransfer extends BaseService
             return ['success' => false, 'message' => 'Module disabled by ClaimRev: ' . $check->disableReason];
         }
 
-        $bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+        $bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
         $testMode = $bootstrap->getGlobalConfig()->isTestModeEnabled();
 
         $pidInt = (int) $pid;
