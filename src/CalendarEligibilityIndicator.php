@@ -33,6 +33,35 @@ class CalendarEligibilityIndicator
 
     public function filterCalendarEvents(CalendarUserGetEventsFilter $event): CalendarUserGetEventsFilter
     {
+        // Defensive boundary: this listener only adds cosmetic eligibility
+        // color indicators to appointment blocks; it must NEVER remove
+        // appointments. Core dispatches this filter inside
+        // postcalendar_userapi_pcGetEvents() (interface/main/calendar/modules/
+        // PostCalendar/pnuserapi.php) with no error handling, so any exception
+        // thrown here -- e.g. a missing mod_claimrev_eligibility column on an
+        // out-of-date schema -- would blank the entire calendar until the
+        // module is disabled. On any failure, log and return the events
+        // untouched so appointments always render.
+        try {
+            return $this->applyEligibilityIndicators($event);
+        } catch (\Throwable $e) {
+            error_log(
+                'oe-module-claimrev-connect: calendar eligibility indicators skipped, '
+                . 'appointments returned unmodified: ' . $e->getMessage()
+            );
+            return $event;
+        }
+    }
+
+    /**
+     * Enrich each calendar appointment with an eligibility CSS class.
+     *
+     * Always wrapped by filterCalendarEvents() so that a failure here -- a SQL
+     * error, schema drift, bad data -- can never remove appointments from the
+     * calendar.
+     */
+    private function applyEligibilityIndicators(CalendarUserGetEventsFilter $event): CalendarUserGetEventsFilter
+    {
         $eventsByDay = $event->getEventsByDays();
 
         // Collect all unique PIDs from the calendar events
