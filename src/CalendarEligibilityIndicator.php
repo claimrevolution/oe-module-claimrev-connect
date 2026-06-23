@@ -109,7 +109,7 @@ class CalendarEligibilityIndicator
                 }
 
                 $existingClass = TypeCoerce::asString($calEvent['eventViewClass'] ?? '');
-                $calEvent['eventViewClass'] = trim($existingClass . ' ' . $eligClass);
+                $calEvent['eventViewClass'] = self::mergeEventViewClass($existingClass, $eligClass);
                 $dayEvents[$i] = $calEvent;
             }
             $eventsByDay[$key] = $dayEvents;
@@ -214,6 +214,27 @@ class CalendarEligibilityIndicator
         }
 
         return '';
+    }
+
+    /**
+     * Build the eventViewClass string for a tagged appointment.
+     *
+     * The day/week calendar template does `$evtClass = $event['eventViewClass']
+     * ?? $evtClass` (interface/main/calendar/modules/PostCalendar/pntemplates/
+     * default/views/day/ajax_template.html) -- i.e. eventViewClass REPLACES the
+     * core class rather than adding to it. For a normal appointment that core
+     * class is `event_appointment`, which in ajax_calendar_sass.scss carries
+     * `z-index: 2` and `background-color: white`. If we set eventViewClass to
+     * only our eligibility class, the appointment div loses `event_appointment`
+     * and drops behind the calendar grid in week/day view (month view uses a
+     * different template and is unaffected). So we must keep a base class: the
+     * existing eventViewClass if some other listener already set one, otherwise
+     * `event_appointment`.
+     */
+    private static function mergeEventViewClass(string $existingClass, string $eligClass): string
+    {
+        $base = $existingClass !== '' ? $existingClass : 'event_appointment';
+        return trim($base . ' ' . $eligClass);
     }
 
     private function getAssetPath(): string

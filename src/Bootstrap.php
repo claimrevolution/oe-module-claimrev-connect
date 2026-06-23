@@ -48,7 +48,7 @@ class Bootstrap
 {
     const MODULE_INSTALLATION_PATH = "/interface/modules/custom_modules/";
     const MODULE_NAME = "oe-module-claimrev-connect";
-    const MODULE_VERSION = "2.1.5";
+    const MODULE_VERSION = "2.1.6";
 
     /**
      * @var GlobalConfig Holds our module global configuration values that can be used throughout the module.
