@@ -48,6 +48,17 @@ class Bootstrap
 {
     const MODULE_INSTALLATION_PATH = "/interface/modules/custom_modules/";
     const MODULE_NAME = "oe-module-claimrev-connect";
+    /**
+     * Single source of truth for the module version. The UI (public/index.php,
+     * public/debug-info.php) and the ClaimRev version check all read this
+     * constant -- do NOT hardcode the version number anywhere else.
+     *
+     * To cut a release:
+     *   1. Bump this constant.
+     *   2. Add a matching entry at the top of CHANGELOG.md.
+     *   3. Commit, then `git tag vX.Y.Z && git push origin main --tags`.
+     *   4. Packagist auto-updates from the tag; `composer update` on each install.
+     */
     const MODULE_VERSION = "2.1.6";
 
     /**

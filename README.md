@@ -7,7 +7,7 @@ API; eligibility, reconciliation, denial analytics, AR aging, and a claim
 status dashboard run on the local copy of that data plus OpenEMR's billing
 tables.
 
-Module version: see `Bootstrap::MODULE_VERSION`. Current: **2.1.6**.
+Module version: defined once in `Bootstrap::MODULE_VERSION` and shown on the module's home/debug page. (Don't hardcode the version anywhere else — see the release checklist above that constant.)
 
 ---
 
