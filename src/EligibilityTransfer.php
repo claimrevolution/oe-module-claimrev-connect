@@ -52,10 +52,10 @@ class EligibilityTransfer extends BaseService
             // still drains the queue but never hits the live API.
             $waitingEligibility = EligibilityData::getEligibilityCheckByStatus(self::STATUS_WAITING);
             foreach ($waitingEligibility as $row) {
-                if (!is_array($row) || !isset($row['id'])) {
+                $eid = $row['id'] ?? null;
+                if (!is_int($eid) && !is_string($eid)) {
                     continue;
                 }
-                $eid = $row['id'];
                 $rowPid = TypeCoerce::asInt($row['pid'] ?? 0);
                 $rowPr = TypeCoerce::asString($row['payer_responsibility'] ?? 'P');
                 if ($rowPid === 0) {
@@ -87,10 +87,10 @@ class EligibilityTransfer extends BaseService
     public static function retryEligibility(array $retryEligibility, ClaimRevApi $api): void
     {
         foreach ($retryEligibility as $eligibility) {
-            if (!is_array($eligibility) || !isset($eligibility['id'])) {
+            $eid = $eligibility['id'] ?? null;
+            if (!is_int($eid) && !is_string($eid)) {
                 continue;
             }
-            $eid = $eligibility['id'];
             try {
                 $result = $api->getEligibilityResult((string) $eid);
             } catch (ClaimRevApiException) {
@@ -107,11 +107,11 @@ class EligibilityTransfer extends BaseService
     public static function sendEligibility(array $waitingEligibility, ClaimRevApi $api): void
     {
         foreach ($waitingEligibility as $eligibility) {
-            if (!is_array($eligibility) || !isset($eligibility['id'])) {
+            $eid = $eligibility['id'] ?? null;
+            if (!is_int($eid) && !is_string($eid)) {
                 continue;
             }
-            $eid = $eligibility['id'];
-            $request_json = $eligibility['request_json'] ?? '';
+            $request_json = TypeCoerce::asString($eligibility['request_json'] ?? '');
 
             $elig = json_decode($request_json);
             if (!is_object($elig)) {
@@ -426,12 +426,8 @@ class EligibilityTransfer extends BaseService
         }
 
         $individuals = $mappedData['individuals'];
-        if (!is_array($individuals)) {
-            EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR, null, $payload, true, $responseMessage . ' missing individuals Property', null, null, null);
-            return;
-        }
         $individual = $individuals[array_key_first($individuals)] ?? null;
-        if ($individual === null) {
+        if (!is_array($individual)) {
             EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR, null, $payload, true, $responseMessage . ' missing individual Property', null, null, null);
             return;
         }
@@ -448,8 +444,10 @@ class EligibilityTransfer extends BaseService
         // Process eligibility results (Product 1) if present
         if (isset($individual['eligibility']) && is_array($individual['eligibility']) && $individual['eligibility'] !== []) {
             $eligibilities = $individual['eligibility'];
+            // $eligibilities is non-empty per the check above, so
+            // array_key_first() always returns a valid key here.
             $firstKey = array_key_first($eligibilities);
-            $eligibility = $firstKey !== null ? $eligibilities[$firstKey] : null;
+            $eligibility = $eligibilities[$firstKey];
             $encodedElig = json_encode($eligibility, JSON_UNESCAPED_SLASHES);
             $eligibility_json = $encodedElig !== false ? $encodedElig : null;
 
