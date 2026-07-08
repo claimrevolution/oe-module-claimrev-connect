@@ -19,8 +19,8 @@ require_once "../../../../globals.php";
 use OpenEMR\Common\Acl\AccessDeniedHelper;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Core\Header;
-use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevApiException;
 use OpenEMR\Modules\ClaimRevConnector\EraMockService;
 use OpenEMR\Modules\ClaimRevConnector\EraPage;
@@ -31,7 +31,7 @@ $selected = " selected ";
 $datas = [];
 $errorMessage = null;
 
-$bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+$bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
 $globalConfig = $bootstrap->getGlobalConfig();
 $testMode = $globalConfig->isTestModeEnabled();
 

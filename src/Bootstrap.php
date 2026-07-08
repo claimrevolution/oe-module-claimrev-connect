@@ -59,7 +59,7 @@ class Bootstrap
      *   3. Commit, then `git tag vX.Y.Z && git push origin main --tags`.
      *   4. Packagist auto-updates from the tag; `composer update` on each install.
      */
-    const MODULE_VERSION = "2.1.6";
+    const MODULE_VERSION = "2.1.7";
 
     /**
      * @var GlobalConfig Holds our module global configuration values that can be used throughout the module.
@@ -232,7 +232,24 @@ class Bootstrap
         );
         ?>
 
-        <div> <?php include $path . "/eligibility.php";?> </div>
+        <div>
+        <?php
+        try {
+            include $path . "/eligibility.php";
+        } catch (\Throwable $e) {
+            // Fault boundary: this section renders inside the core demographics
+            // page via a RenderEvent listener. An uncaught error here aborts the
+            // whole page, blanking adjacent core panels (e.g. Patient/Portal/API).
+            // Catch Throwable (Error, not just Exception) so a template fault
+            // degrades to an inline notice instead. Same isolation rationale as
+            // the calendar-indicator fix.
+            error_log('ClaimRev Connect: eligibility section render failed: ' . $e->getMessage());
+            echo '<div class="text-danger small">'
+                . xlt('ClaimRev eligibility is temporarily unavailable.')
+                . '</div>';
+        }
+        ?>
+        </div>
     </section>
         <?php
     }

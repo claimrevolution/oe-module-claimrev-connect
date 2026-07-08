@@ -18,8 +18,8 @@ require_once "../../../../globals.php";
 use OpenEMR\Common\Acl\AccessDeniedHelper;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Core\Header;
-use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevApiException;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
 use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
@@ -36,7 +36,7 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
     );
 }
 
-$bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+$bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
 $globalConfig = $bootstrap->getGlobalConfig();
 $portalUrl = $globalConfig->getPortalUrl();
 $csrfToken = CsrfHelper::collectCsrfToken('payment_advice');

@@ -12,8 +12,8 @@
 
 declare(strict_types=1);
 
-use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
 use OpenEMR\Modules\ClaimRevConnector\EligibilityData;
 use OpenEMR\Modules\ClaimRevConnector\EligibilityObjectCreator;
@@ -35,7 +35,7 @@ if ($noInsurance) {
     $insurance = [['payer_responsibility' => 'primary']];
 }
 $eligibilityCsrfToken = CsrfHelper::collectCsrfToken('eligibility');
-$eligTestMode = (new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher()))
+$eligTestMode = (new Bootstrap(KernelCompat::resolve()->getEventDispatcher()))
     ->getGlobalConfig()
     ->isTestModeEnabled();
 

@@ -15,8 +15,8 @@ declare(strict_types=1);
 require_once "../../../../globals.php";
 
 use OpenEMR\Common\Acl\AclMain;
-use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevApi;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevException;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
@@ -69,7 +69,7 @@ if (!EligibilityData::objectIdBelongsToPatient($pid, $sharpRevenueObjectId)) {
     exit;
 }
 
-$bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+$bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
 
 if ($bootstrap->getGlobalConfig()->isTestModeEnabled()) {
     $answer = EligibilityChatMockService::buildAnswer($sharpRevenueObjectId, $question, $payerCode);

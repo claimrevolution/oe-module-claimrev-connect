@@ -22,6 +22,7 @@ use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
 use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 use OpenEMR\Modules\ClaimRevConnector\ReconciliationMockService;
@@ -36,7 +37,7 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
     );
 }
 
-$bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+$bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
 $portalUrl = $bootstrap->getGlobalConfig()->getPortalUrl();
 $testMode = $bootstrap->getGlobalConfig()->isTestModeEnabled();
 $csrfToken = CsrfHelper::collectCsrfToken('claims');

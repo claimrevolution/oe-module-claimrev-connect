@@ -20,8 +20,8 @@ declare(strict_types=1);
 require_once "../../../../globals.php";
 
 use OpenEMR\Common\Acl\AclMain;
-use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Modules\ClaimRevConnector\ClaimsPage;
 use OpenEMR\Modules\ClaimRevConnector\ClaimStatusSyncService;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
@@ -42,7 +42,7 @@ if (!CsrfHelper::verifyCsrfToken(ModuleInput::postString('csrf_token'), 'claims'
     exit;
 }
 
-$bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+$bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
 if ($bootstrap->getGlobalConfig()->isTestModeEnabled()) {
     echo json_encode([
         'success' => true,

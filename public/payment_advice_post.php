@@ -20,8 +20,8 @@ declare(strict_types=1);
 require_once "../../../../globals.php";
 
 use OpenEMR\Common\Acl\AclMain;
-use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
+use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
 use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 use OpenEMR\Modules\ClaimRevConnector\PaymentAdvicePage;
@@ -41,7 +41,7 @@ if (!CsrfHelper::verifyCsrfToken(ModuleInput::postString('csrf_token'), 'payment
     exit;
 }
 
-$bootstrap = new Bootstrap(OEGlobalsBag::getInstance()->getKernel()->getEventDispatcher());
+$bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
 $isTestModeEnabled = $bootstrap->getGlobalConfig()->isTestModeEnabled();
 
 // When the global enables test mode, skip the mark-worked side effect on
