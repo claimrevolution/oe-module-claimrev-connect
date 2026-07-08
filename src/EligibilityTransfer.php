@@ -50,10 +50,12 @@ class EligibilityTransfer extends BaseService
         if ($testMode) {
             // Resolve all queued requests via the mock; the cron service
             // still drains the queue but never hits the live API.
-            /** @var array<int, array{id: int|string, request_json?: string, pid?: int|string, payer_responsibility?: string}> */
             $waitingEligibility = EligibilityData::getEligibilityCheckByStatus(self::STATUS_WAITING);
             foreach ($waitingEligibility as $row) {
-                $eid = $row['id'];
+                $eid = $row['id'] ?? null;
+                if (!is_int($eid) && !is_string($eid)) {
+                    continue;
+                }
                 $rowPid = TypeCoerce::asInt($row['pid'] ?? 0);
                 $rowPr = TypeCoerce::asString($row['payer_responsibility'] ?? 'P');
                 if ($rowPid === 0) {
@@ -72,22 +74,23 @@ class EligibilityTransfer extends BaseService
             return;
         }
 
-        /** @var array<int, array{id: int|string, request_json?: string}> */
         $waitingEligibility = EligibilityData::getEligibilityCheckByStatus(self::STATUS_WAITING);
         self::sendEligibility($waitingEligibility, $api);
 
-        /** @var array<int, array{id: int|string}> */
         $retryEligibility = EligibilityData::getEligibilityResults(self::STATUS_SEND_RETRY, 60);
         self::retryEligibility($retryEligibility, $api);
     }
 
     /**
-     * @param array<int, array{id: int|string}> $retryEligibility
+     * @param list<array<string, mixed>> $retryEligibility
      */
     public static function retryEligibility(array $retryEligibility, ClaimRevApi $api): void
     {
         foreach ($retryEligibility as $eligibility) {
-            $eid = $eligibility['id'];
+            $eid = $eligibility['id'] ?? null;
+            if (!is_int($eid) && !is_string($eid)) {
+                continue;
+            }
             try {
                 $result = $api->getEligibilityResult((string) $eid);
             } catch (ClaimRevApiException) {
@@ -99,13 +102,16 @@ class EligibilityTransfer extends BaseService
     }
 
     /**
-     * @param array<int, array{id: int|string, request_json?: string}> $waitingEligibility
+     * @param list<array<string, mixed>> $waitingEligibility
      */
     public static function sendEligibility(array $waitingEligibility, ClaimRevApi $api): void
     {
         foreach ($waitingEligibility as $eligibility) {
-            $eid = $eligibility['id'];
-            $request_json = $eligibility['request_json'] ?? '';
+            $eid = $eligibility['id'] ?? null;
+            if (!is_int($eid) && !is_string($eid)) {
+                continue;
+            }
+            $request_json = TypeCoerce::asString($eligibility['request_json'] ?? '');
 
             $elig = json_decode($request_json);
             if (!is_object($elig)) {
@@ -419,10 +425,9 @@ class EligibilityTransfer extends BaseService
             return;
         }
 
-        /** @var array<int|string, array<string, mixed>> */
         $individuals = $mappedData['individuals'];
         $individual = $individuals[array_key_first($individuals)] ?? null;
-        if ($individual === null) {
+        if (!is_array($individual)) {
             EligibilityData::updateEligibilityRecord($eid, self::STATUS_SEND_ERROR, null, $payload, true, $responseMessage . ' missing individual Property', null, null, null);
             return;
         }
@@ -438,10 +443,11 @@ class EligibilityTransfer extends BaseService
 
         // Process eligibility results (Product 1) if present
         if (isset($individual['eligibility']) && is_array($individual['eligibility']) && $individual['eligibility'] !== []) {
-            /** @var array<int|string, array<string, mixed>> */
             $eligibilities = $individual['eligibility'];
+            // $eligibilities is non-empty per the check above, so
+            // array_key_first() always returns a valid key here.
             $firstKey = array_key_first($eligibilities);
-            $eligibility = $firstKey !== null ? $eligibilities[$firstKey] : null;
+            $eligibility = $eligibilities[$firstKey];
             $encodedElig = json_encode($eligibility, JSON_UNESCAPED_SLASHES);
             $eligibility_json = $encodedElig !== false ? $encodedElig : null;
 
