@@ -25,16 +25,19 @@ class ClaimSearch
     /**
      * Static entry point. Resolves the API client from globals and delegates.
      *
-     * Returns false when the module is unconfigured or the API call fails,
-     * which is the contract callers such as ClaimsPage already test for.
+     * Returns false only when the module is not configured, which is the
+     * contract ClaimsPage's ($raw === false) branches test for. Genuine
+     * failures — an outage, rejected credentials, an HTTP error — are left to
+     * propagate so public/claims.php can surface them as a visible error
+     * rather than an empty result set that reads as "no matches".
      *
-     * @return array<string, mixed>|false Returns false on error
+     * @return array<string, mixed>|false False when the module is unconfigured
      */
     public static function search(object $search): array|false
     {
         try {
             return (new self(ClaimRevApi::makeFromGlobals()))->searchClaims($search);
-        } catch (ClaimRevException) {
+        } catch (ModuleNotConfiguredException) {
             return false;
         }
     }

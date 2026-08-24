@@ -10,6 +10,13 @@ use OpenEMR\Modules\ClaimRevConnector\ClaimSearch;
 use OpenEMR\Modules\ClaimRevConnector\Tests\Support\MockApiFactory;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * Note: the static ClaimSearch::search() wrapper itself is not directly
+ * tested here. It calls ClaimRevApi::makeFromGlobals(), which needs OpenEMR
+ * globals not stubbed until a later phase. Its two branches (configured vs.
+ * ModuleNotConfiguredException) are exercised indirectly through the
+ * instance method searchClaims(), which contains all of its logic.
+ */
 final class ClaimSearchTest extends TestCase
 {
     public function testSearchClaimsReturnsTheDecodedPayload(): void
@@ -37,6 +44,12 @@ final class ClaimSearchTest extends TestCase
         self::assertSame(['payerNumber' => '99999'], $factory->requestBody());
     }
 
+    /**
+     * Regression guard: an outage must not read as "no matches". The static
+     * search() wrapper deliberately catches only ModuleNotConfiguredException,
+     * so a ClaimRevApiException here reaches public/claims.php's error
+     * banner instead of being swallowed into an empty result set.
+     */
     public function testSearchClaimsLetsApiFailuresPropagate(): void
     {
         $factory = new MockApiFactory([new Response(503, [], 'unavailable')]);
