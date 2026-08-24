@@ -26,6 +26,9 @@ class EraSearch
      * Static entry point for ERA file search. Resolves the client from
      * globals and delegates.
      *
+     * Returns false when the module is unconfigured or the API call fails,
+     * which is the contract EraPage::searchEras() tests for.
+     *
      * @return array<string, mixed>|false Returns false on error
      */
     public static function search(object $search): array|false
@@ -40,6 +43,9 @@ class EraSearch
     /**
      * Static entry point for ERA download. Resolves the client from globals
      * and delegates.
+     *
+     * Returns false when the module is unconfigured or the API call fails,
+     * which is the contract EraPage::downloadEra() tests for.
      *
      * @return array<string, mixed>|false Returns false on error
      */

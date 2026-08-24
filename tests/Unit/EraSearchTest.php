@@ -34,7 +34,16 @@ final class EraSearchTest extends TestCase
         self::assertSame('ISA*00*...', $result['fileText']);
     }
 
-    public function testInstanceMethodsLetApiFailuresPropagate(): void
+    public function testSearchDownloadableFilesLetsApiFailuresPropagate(): void
+    {
+        $factory = new MockApiFactory([new Response(500, [], 'boom')]);
+
+        $this->expectException(ClaimRevApiException::class);
+
+        (new EraSearch($factory->api))->searchDownloadableFiles((object) ['ediType' => '835']);
+    }
+
+    public function testFetchFileForDownloadLetsApiFailuresPropagate(): void
     {
         $factory = new MockApiFactory([new Response(500, [], 'boom')]);
 
