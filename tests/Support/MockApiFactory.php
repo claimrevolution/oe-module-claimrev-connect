@@ -22,7 +22,7 @@ use OpenEMR\Modules\ClaimRevConnector\ClaimRevApi;
 final class MockApiFactory
 {
     /** @var list<array<string, mixed>> Guzzle's recorded transaction history. */
-    public array $history = [];
+    private array $history = [];
 
     public readonly ClaimRevApi $api;
 
@@ -52,21 +52,33 @@ final class MockApiFactory
         ]);
     }
 
+    /** How many requests were recorded. */
+    public function requestCount(): int
+    {
+        return count($this->history);
+    }
+
+    /** The nth recorded request, zero-indexed. PSR-7 requests are immutable, so this is safe to hand out. */
+    public function request(int $index = 0): \Psr\Http\Message\RequestInterface
+    {
+        return $this->history[$index]['request'];
+    }
+
     /** The path (with query string) of the nth recorded request, zero-indexed. */
     public function requestTarget(int $index = 0): string
     {
-        return (string) $this->history[$index]['request']->getRequestTarget();
+        return $this->request($index)->getRequestTarget();
     }
 
     /** The decoded JSON body of the nth recorded request, zero-indexed. */
     public function requestBody(int $index = 0): mixed
     {
-        return json_decode((string) $this->history[$index]['request']->getBody(), true);
+        return json_decode((string) $this->request($index)->getBody(), true);
     }
 
     /** The value of a header on the nth recorded request, zero-indexed. */
     public function requestHeader(string $name, int $index = 0): string
     {
-        return $this->history[$index]['request']->getHeaderLine($name);
+        return $this->request($index)->getHeaderLine($name);
     }
 }

@@ -57,6 +57,11 @@ final class ClaimRevApiTest extends TestCase
      * Only $endpoint survives intact. Any caller inspecting
      * $e->httpStatusCode or $e->responseBody to report the real failure
      * reason will not get it.
+     *
+     * This pins a known deferred bug: ClaimRevApi never sets `http_errors`
+     * on its Guzzle client, so Guzzle throws before the status check runs.
+     * When that is fixed, these assertions must change to the real status
+     * (404) and body ('nope') instead of 0 and ''.
      */
     public function testGuzzleErrorPathLosesTheStatusCodeAndBody(): void
     {
@@ -71,5 +76,20 @@ final class ClaimRevApiTest extends TestCase
             self::assertSame('/api/ClaimView/v1/GetClaimStatuses', $e->endpoint);
             self::assertStringContainsString('404', $e->getMessage());
         }
+    }
+
+    public function testFactoryRecordsMethodAndCountAcrossMultipleRequests(): void
+    {
+        $factory = new MockApiFactory([
+            new Response(200, ['Content-Type' => 'application/json'], json_encode([], JSON_THROW_ON_ERROR)),
+            new Response(200, ['Content-Type' => 'application/json'], json_encode(['results' => [], 'totalRecords' => 0], JSON_THROW_ON_ERROR)),
+        ]);
+
+        $factory->api->getClaimStatuses();
+        $factory->api->searchClaims((object) ['patientLastName' => 'Sharp']);
+
+        self::assertSame(2, $factory->requestCount());
+        self::assertSame('GET', $factory->request(0)->getMethod());
+        self::assertSame('POST', $factory->request(1)->getMethod());
     }
 }
