@@ -212,6 +212,31 @@ has been wrong since that class landed; the module already cannot run below
 8.2. Raise the constraint to `>=8.2` so the manifest matches reality. This
 narrows nothing in practice — it documents an existing requirement.
 
+## Contract corrections
+
+Each consumer's docblock is checked against what its code actually does during
+conversion, and corrected where the two disagree. An audit found one genuine
+mismatch rather than a widespread pattern:
+
+**`ClaimSearch::search()`** documents "Returns false on error for backward
+compatibility" but contains no `catch`, so it cannot return `false`. A
+credentials or API failure propagates as an uncaught exception. The conversion
+adds the `catch (ClaimRevException)` the docblock already promises, matching
+its sibling `EraSearch::search()`, which does catch.
+
+This has a knock-on effect that is the point of the fix. `ClaimsPage`, at both
+`searchClaims()` and `getClaimByObjectId()`, already tests `if ($raw === false)`
+and returns an empty result. Those branches are unreachable dead code today.
+Once `ClaimSearch::search()` can actually return `false`, they become live and
+the Claims tab degrades to an empty result set instead of surfacing an
+exception. Tests cover both the `false` return and the now-reachable branches.
+
+Where a consumer's docblock is already accurate — `PaymentAdvicePage` declares
+no `false` return and correctly lets exceptions propagate to its page-level
+handler — nothing changes. Contract corrections are limited to genuine
+mismatches; this is not a licence to restructure error handling that already
+works.
+
 ## CI
 
 `.github/workflows/tests.yml`, triggered on push and pull request:
@@ -247,15 +272,10 @@ reconciliation, or transfer logic. That slice is what issue #24 asks for, but
 these files will not have meaningful overall coverage when this work is done,
 and the spec should not be read as claiming otherwise.
 
-Two smaller notes:
-
-- `ClaimSearch::search()` documents "Returns false on error for backward
-  compatibility" but catches nothing, so it cannot return `false` today. The
-  conversion makes the contract honest by adding the `catch` its docblock
-  already promises. This is a behaviour change, from fatal to `false`, and is
-  called out in the changelog.
-- Verification for this work is the test suite itself, run locally and in CI.
-  No manual OpenEMR testing is required, since no runtime behaviour changes.
+One further note: verification for this work is the test suite itself, run
+locally and in CI. The only intended runtime behaviour change is the
+`ClaimSearch` contract correction described above, which is called out in the
+changelog; everything else is structural and should be invisible at runtime.
 
 ## Acceptance criteria
 
