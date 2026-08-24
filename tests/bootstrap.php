@@ -12,5 +12,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-// Must load before any module class, so the stubbed OpenEMR classes win.
+// These classes are not PSR-4 autoloadable, so this must be required before
+// any module class that references them loads, or PHP fatals on an
+// undefined class.
 require_once __DIR__ . '/Stubs/openemr-classes.php';

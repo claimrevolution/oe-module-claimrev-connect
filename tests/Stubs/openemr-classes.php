@@ -30,6 +30,11 @@ namespace {
 
 namespace OpenEMR\Core {
 
+    /**
+     * Stateless by design: every read goes through ClaimRevStubState::$globals,
+     * so ClaimRevStubState::reset() alone is sufficient to isolate tests.
+     * Do not add instance state here without also updating reset().
+     */
     class OEGlobalsBag
     {
         private static ?self $instance = null;
@@ -46,8 +51,11 @@ namespace OpenEMR\Core {
 
         public function getString(string $key, string $default = ''): string
         {
-            $value = \ClaimRevStubState::$globals[$key] ?? $default;
-            return is_string($value) ? $value : $default;
+            $value = $this->get($key, $default);
+            if (!is_scalar($value) && !$value instanceof \Stringable) {
+                throw new \UnexpectedValueException(sprintf('Parameter value "%s" cannot be converted to "string".', $key));
+            }
+            return (string) $value;
         }
     }
 }
@@ -56,7 +64,7 @@ namespace OpenEMR\BC {
 
     class ServiceContainer
     {
-        public static function getLogger(): \ClaimRevStubLogger
+        public static function getLogger(): \Psr\Log\LoggerInterface
         {
             return new \ClaimRevStubLogger();
         }
@@ -65,24 +73,16 @@ namespace OpenEMR\BC {
 
 namespace {
     /** Records log calls so tests can assert on error reporting. */
-    final class ClaimRevStubLogger
+    final class ClaimRevStubLogger extends \Psr\Log\AbstractLogger
     {
         /** @param array<string, mixed> $context */
-        public function error(string $message, array $context = []): void
+        public function log($level, string|\Stringable $message, array $context = []): void
         {
-            ClaimRevStubState::$logs[] = ['level' => 'error', 'message' => $message, 'context' => $context];
-        }
-
-        /** @param array<string, mixed> $context */
-        public function warning(string $message, array $context = []): void
-        {
-            ClaimRevStubState::$logs[] = ['level' => 'warning', 'message' => $message, 'context' => $context];
-        }
-
-        /** @param array<string, mixed> $context */
-        public function info(string $message, array $context = []): void
-        {
-            ClaimRevStubState::$logs[] = ['level' => 'info', 'message' => $message, 'context' => $context];
+            ClaimRevStubState::$logs[] = [
+                'level' => (string) $level,
+                'message' => (string) $message,
+                'context' => $context,
+            ];
         }
     }
 }
