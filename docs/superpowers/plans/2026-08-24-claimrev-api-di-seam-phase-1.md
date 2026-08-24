@@ -1225,9 +1225,65 @@ git commit -m "docs: changelog for the phase-1 DI seam and test harness (#24)"
 - `grep -rn "makeFromGlobals" src/` shows the three converted classes calling it
   only from their static wrappers.
 
+## Correction made during implementation
+
+**Task 4 as originally written was wrong, and the error would have propagated
+to eleven more consumers.** It specified `catch (ClaimRevException)` in
+`ClaimSearch`'s static wrapper. Because `ClaimRevException extends
+\RuntimeException` and `public/claims.php:274` catches
+`\RuntimeException | \LogicException` to render a red error banner, that broad
+catch swallowed genuine outages: `ClaimsPage::searchClaims()` converted the
+`false` into an empty result set and the page rendered a blue "No results
+found", indistinguishable from a search that legitimately matched nothing. A
+biller searching during a ClaimRev outage would have been told their claim did
+not exist.
+
+The catch was narrowed to `catch (ModuleNotConfiguredException)`. This is
+correct because `public/claims.php:269` already gates the search on
+`$isConfigured`, so every exception reaching the wrapper is a real runtime
+failure that must stay visible.
+
+**Rule for phase 2: never widen a consumer's catch beyond what it caught
+before.** Preserve each consumer's existing error contract exactly. Where a
+consumer had no catch, add only `ModuleNotConfiguredException` — never the base
+class.
+
 ## Follow-up
 
 Phase 2 covers the remaining nine consumers and is planned once this lands. It
 begins by extending the stub layer with `QueryUtils`, `Bootstrap`,
 `GlobalConfig`, `KernelCompat`, and the `OpenEMR\Billing\*` classes, which is
 the real cost in those conversions.
+
+### Prerequisites for phase 2
+
+- **Split `tests/Stubs/openemr-classes.php` one class per file**, mirroring
+  real OpenEMR paths (`tests/Stubs/OpenEMR/Core/OEGlobalsBag.php`), loaded from
+  a manifest. Fine at today's four classes; unwieldy at the dozen phase 2
+  needs, and path-mirroring is what made the fidelity audit easy.
+- **Reconcile the `OEGlobalsBag` stub's `get()`** with real Symfony: the stub
+  uses `?? $default` where `ParameterBag` uses `array_key_exists()`, so a global
+  explicitly set to `null` behaves differently. Unreachable today.
+
+### Bugs found during phase 1, deliberately not fixed here
+
+- **`ClaimRevApi` never sets `http_errors`.** Guzzle's default throws on any
+  4xx/5xx *before* `get()`/`post()` reach their own status check, so the
+  `"ClaimRev API returned HTTP {code}"` branch is dead code and every real
+  failure yields `ClaimRevApiException` with `httpStatusCode = 0` and
+  `responseBody = ''`. Nothing currently reads those fields, so it is latent.
+  `tests/Unit/ClaimRevApiTest.php::testGuzzleErrorPathLosesTheStatusCodeAndBody`
+  pins the current behaviour and must be updated when this is fixed.
+- **The ERA tab reports outages as "No results found."**
+  `EraSearch::search()` catches `ClaimRevException` and returns `false`,
+  `EraPage::searchEras()` maps that to `null`, `public/era.php` coalesces to
+  `[]`, and the page renders "No results found" — so the `catch` in `era.php`
+  that sets a proper error message is unreachable for API failures. Fixing it
+  is **not** a drop-in narrowing: `public/EraDownload.php:55` catches only
+  `ClaimRevApiException`, and `ClaimRevAuthenticationException` is a sibling
+  class, so narrowing `EraSearch::downloadEra()` without first widening that
+  endpoint's catch would turn an auth failure into an unhandled fatal.
+- **`README.md` points OpenEMR 7.x users at a `release/v7-compat` branch that
+  does not exist** on origin (only `Development` and `main`). Raising the PHP
+  floor to `>=8.2` narrows 7.x support further, so the README's stated escape
+  hatch needs either a real branch or a correction.

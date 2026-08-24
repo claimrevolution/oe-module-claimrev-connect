@@ -102,10 +102,19 @@ class EraSearch
 
 Two rules follow from this shape:
 
-- **Error suppression belongs in the static wrapper.** The instance method
-  throws; the wrapper catches and converts to the legacy `false` return. Tests
-  then assert on exceptions rather than on a sentinel, and the instance
-  method's declared return type stops carrying `|false`.
+- **Error suppression belongs in the static wrapper, and must stay narrow.**
+  The instance method throws; the wrapper catches and converts to the legacy
+  `false` return. Tests then assert on exceptions rather than on a sentinel, and
+  the instance method's declared return type stops carrying `|false`.
+
+  **Never widen a consumer's catch beyond what it caught before.** Preserve each
+  existing error contract exactly; where a consumer had no catch, add only
+  `catch (ModuleNotConfiguredException)`, never the `ClaimRevException` base
+  class. Implementation proved why: catching the base class in `ClaimSearch`
+  swallowed real outages, and because `ClaimRevException extends
+  \RuntimeException`, it bypassed the error banner in `public/claims.php` and
+  rendered a ClaimRev outage as "No results found" — telling a biller their
+  claim did not exist when the clearinghouse was simply unreachable.
 - **The wrapper constructs a fresh client per call**, exactly as the current
   inline code does. No caching is introduced, so there is no behaviour change.
 
