@@ -33,10 +33,13 @@ if (!AclMain::aclCheckCore('acct', 'bill')) {
     AccessDeniedHelper::denyWithTemplate("ACL check failed for acct/bill: ClaimRev Connect - Claims", xl("ClaimRev Connect - Claims"));
 }
 
-$claimStatuses = ClaimsPage::getClaimStatuses();
-
 $bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
-$portalUrl = $bootstrap->getGlobalConfig()->getPortalUrl();
+$globalConfig = $bootstrap->getGlobalConfig();
+$isConfigured = $globalConfig->isConfigured();
+// Skip the status lookup entirely when credentials are missing so an
+// unconfigured module renders the page instead of attempting API calls.
+$claimStatuses = $isConfigured ? ClaimsPage::getClaimStatuses() : [];
+$portalUrl = $globalConfig->getPortalUrl();
 $csrfToken = CsrfHelper::collectCsrfToken('claims');
 $webRoot = OEGlobalsBag::getInstance()->getString('webroot');
 
@@ -129,6 +132,12 @@ $searchFilters = [
     <body class="body_top">
         <div class="container-fluid">
             <?php require '../templates/navbar.php'; ?>
+            <?php if (!$isConfigured) { ?>
+                <div class="alert alert-warning mt-3">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    <?php echo xlt("ClaimRev Connect is not configured. Enter your Client ID and Client Secret under Administration, Globals, ClaimRev Connect to activate this page."); ?>
+                </div>
+            <?php } ?>
             <form method="post" action="claims.php" id="claimSearchForm">
                 <input type="hidden" name="csrf_token" value="<?php echo attr($csrfToken); ?>"/>
                 <input type="hidden" name="sortField" id="sortField" value="<?php echo attr($sortFieldRaw); ?>"/>
@@ -257,7 +266,7 @@ $searchFilters = [
             $totalRecords = 0;
             $pageIndex = ModuleInput::postInt('pageIndex');
             $pageSize = 50;
-            $hasSubmit = ModuleInput::postExists('SubmitButton') || ModuleInput::postExists('pageIndex');
+            $hasSubmit = ($isConfigured && (ModuleInput::postExists('SubmitButton') || ModuleInput::postExists('pageIndex')));
         if ($hasSubmit) {
             try {
                 $pagedResult = ClaimsPage::searchClaims($searchFilters);

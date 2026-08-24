@@ -21,7 +21,7 @@ use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Core\Header;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
 use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
-use OpenEMR\Modules\ClaimRevConnector\ClaimRevApiException;
+use OpenEMR\Modules\ClaimRevConnector\ClaimRevException;
 use OpenEMR\Modules\ClaimRevConnector\EraMockService;
 use OpenEMR\Modules\ClaimRevConnector\EraPage;
 use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
@@ -34,6 +34,7 @@ $errorMessage = null;
 $bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
 $globalConfig = $bootstrap->getGlobalConfig();
 $testMode = $globalConfig->isTestModeEnabled();
+$isConfigured = $globalConfig->isConfigured();
 
 // Ensure user has proper access
 if (!AclMain::aclCheckCore('acct', 'bill')) {
@@ -52,10 +53,10 @@ $searchPayload = [
 if (ModuleInput::isPostRequest() && ModuleInput::postExists('SubmitButton')) {
     if ($testMode) {
         $datas = EraMockService::generateMockResults($searchPayload);
-    } else {
+    } elseif ($isConfigured) {
         try {
             $datas = EraPage::searchEras($searchPayload) ?? [];
-        } catch (ClaimRevApiException) {
+        } catch (ClaimRevException) {
             $errorMessage = xlt('Failed to search ERAs. Please check your ClaimRev connection settings.');
             $datas = [];
         }
@@ -76,6 +77,12 @@ if (ModuleInput::isPostRequest() && ModuleInput::postExists('SubmitButton')) {
     <body class="body_top">
         <div class="container-fluid">
             <?php require '../templates/navbar.php'; ?>
+            <?php if (!$isConfigured && !$testMode) { ?>
+                <div class="alert alert-warning mt-3">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    <?php echo xlt("ClaimRev Connect is not configured. Enter your Client ID and Client Secret under Administration, Globals, ClaimRev Connect to activate this page. To explore with simulated data instead, turn on Enable Test Mode."); ?>
+                </div>
+            <?php } ?>
             <form method="post" action="era.php">
                 <div class="card mt-3">
                     <div class="card-body">

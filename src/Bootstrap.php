@@ -59,7 +59,7 @@ class Bootstrap
      *   3. Commit, then `git tag vX.Y.Z && git push origin main --tags`.
      *   4. Packagist auto-updates from the tag; `composer update` on each install.
      */
-    const MODULE_VERSION = "2.1.7";
+    const MODULE_VERSION = "2.1.8";
 
     /**
      * @var GlobalConfig Holds our module global configuration values that can be used throughout the module.

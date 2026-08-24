@@ -14,6 +14,6 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ClaimRevConnector;
 
-class ModuleNotConfiguredException extends \RuntimeException
+class ModuleNotConfiguredException extends ClaimRevException
 {
 }
