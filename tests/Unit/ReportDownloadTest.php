@@ -96,4 +96,25 @@ final class ReportDownloadTest extends TestCase
             file_get_contents($this->siteDir . '/documents/edi/history/f277/r277.txt'),
         );
     }
+
+    public function testSaveWaitingFilesContinuesToTheNextReportTypeWhenOneFails(): void
+    {
+        // saveWaitingFiles() promises that one failing report type does not
+        // stop the others. 999 fails here, so 277 must still be written.
+        $factory = new MockApiFactory([
+            new Response(500, [], 'boom'),
+            new Response(200, [], json_encode([['fileText' => 'TWO-SEVEN-SEVEN', 'fileName' => 'r277']], JSON_THROW_ON_ERROR)),
+        ]);
+
+        (new ReportDownload($factory->api))->saveWaitingFiles();
+
+        self::assertFileDoesNotExist($this->siteDir . '/documents/edi/history/f997/r999.txt');
+        self::assertSame(
+            'TWO-SEVEN-SEVEN',
+            file_get_contents($this->siteDir . '/documents/edi/history/f277/r277.txt'),
+        );
+        // The per-report-type failure is swallowed by a bare `continue`, with
+        // no log entry. Pinned so that silence stays a deliberate choice.
+        self::assertSame([], ClaimRevStubState::$logs);
+    }
 }
