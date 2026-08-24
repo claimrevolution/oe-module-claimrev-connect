@@ -161,7 +161,10 @@ tests additionally need the `OEGlobalsBag` stub to supply those settings.
 
 ### Test harness
 
-- `require-dev`: `phpunit/phpunit ^11`.
+- `require-dev`: `phpunit/phpunit ^11`, and `psr/log ^3.0` — the stub
+  `ServiceContainer::getLogger()` returns a real `Psr\Log\LoggerInterface` to
+  match core, so the stub logger extends `Psr\Log\AbstractLogger` and inherits
+  all nine level methods rather than hand-rolling three of them.
 - `autoload-dev`: PSR-4 mapping `OpenEMR\Modules\ClaimRevConnector\Tests\` to
   `tests/`.
 - `phpunit.xml` at the repo root, one `unit` suite pointing at `tests/`.
