@@ -203,54 +203,45 @@ class Bootstrap
         $path = str_replace("src", "templates", $path);
 
         $pid = $event->getPid();
+
+        // Markup mirrors core's templates/patient/card/card_base.html.twig so
+        // this section matches the dashboard cards rendered either side of it.
+        // It deliberately does NOT use core's expand_collapse_widget(): that
+        // helper emits legacy table/section-header markup, and core itself
+        // stopped calling it on the demographics page — it now survives only in
+        // third-party modules. Bootstrap's own collapse attributes drive the
+        // toggle, so no core JavaScript is required either.
+        $sectionId = 'claimrev_eligibility_ps_expand';
         ?>
         <section class="card mb-2">
-        <?php
-        // Billing expand collapse widget
-        $widgetTitle = xl("ClaimRev Eligibility");
-        $widgetLabel = "clmrevelig";
-        $widgetButtonLabel = xl("Edit");
-        $widgetButtonLink = ""; // "return newEvt();";
-        $widgetButtonClass = "";
-        $linkMethod = "html";
-        $bodyClass = "notab";
-        $widgetAuth = false;
-        $fixedWidth = false;
-        $forceExpandAlways = false;
-
-        expand_collapse_widget(
-            $widgetTitle,
-            $widgetLabel,
-            $widgetButtonLabel,
-            $widgetButtonLink,
-            $widgetButtonClass,
-            $linkMethod,
-            $bodyClass,
-            $widgetAuth,
-            $fixedWidth,
-            $forceExpandAlways
-        );
-        ?>
-
-        <div>
-        <?php
-        try {
-            include $path . "/eligibility.php";
-        } catch (\Throwable $e) {
-            // Fault boundary: this section renders inside the core demographics
-            // page via a RenderEvent listener. An uncaught error here aborts the
-            // whole page, blanking adjacent core panels (e.g. Patient/Portal/API).
-            // Catch Throwable (Error, not just Exception) so a template fault
-            // degrades to an inline notice instead. Same isolation rationale as
-            // the calendar-indicator fix.
-            error_log('ClaimRev Connect: eligibility section render failed: ' . $e->getMessage());
-            echo '<div class="text-danger small">'
-                . xlt('ClaimRev eligibility is temporarily unavailable.')
-                . '</div>';
-        }
-        ?>
-        </div>
-    </section>
+            <div class="card-body p-1">
+                <h6 class="card-title mb-0 d-flex p-1 justify-content-between">
+                    <a class="text-left font-weight-bolder" href="#" data-toggle="collapse" data-target="#<?php echo attr($sectionId); ?>" aria-expanded="true" aria-controls="<?php echo attr($sectionId); ?>">
+                        <?php echo xlt("ClaimRev Eligibility"); ?><i class="ml-1 fa fa-fw fa-compress" data-target="#<?php echo attr($sectionId); ?>"></i>
+                    </a>
+                </h6>
+                <div id="<?php echo attr($sectionId); ?>" class="card-text collapse show">
+                    <div class="clearfix pt-2">
+                        <?php
+                        try {
+                            include $path . "/eligibility.php";
+                        } catch (\Throwable $e) {
+                            // Fault boundary: this section renders inside the core demographics
+                            // page via a RenderEvent listener. An uncaught error here aborts the
+                            // whole page, blanking adjacent core panels (e.g. Patient/Portal/API).
+                            // Catch Throwable (Error, not just Exception) so a template fault
+                            // degrades to an inline notice instead. Same isolation rationale as
+                            // the calendar-indicator fix.
+                            error_log('ClaimRev Connect: eligibility section render failed: ' . $e->getMessage());
+                            echo '<div class="text-danger small">'
+                                . xlt('ClaimRev eligibility is temporarily unavailable.')
+                                . '</div>';
+                        }
+                        ?>
+                    </div>
+                </div>
+            </div>
+        </section>
         <?php
     }
     /**
