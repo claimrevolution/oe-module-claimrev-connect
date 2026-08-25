@@ -25,6 +25,10 @@ use OpenEMR\Common\Database\QueryUtils;
 
 class PaymentAdvicePostingService
 {
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
     /**
      * Reference prefix used in ar_session to identify ClaimRev postings.
      */
@@ -875,10 +879,20 @@ class PaymentAdvicePostingService
         }
 
         try {
-            $api = ClaimRevApi::makeFromGlobals();
-            $api->markPaymentAdviceWorked($paymentData);
+            (new self(ClaimRevApi::makeFromGlobals()))->notifyClaimRevWorked($paymentData);
         } catch (ClaimRevException) {
             // Best-effort: OpenEMR posting already succeeded, don't fail over this
         }
+    }
+
+    /**
+     * Send the worked-toggle to ClaimRev.
+     *
+     * @param array<string, mixed> $paymentData
+     * @throws ClaimRevApiException on API error
+     */
+    public function notifyClaimRevWorked(array $paymentData): void
+    {
+        $this->api->markPaymentAdviceWorked($paymentData);
     }
 }
