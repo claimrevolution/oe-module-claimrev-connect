@@ -1695,9 +1695,12 @@ Keep every existing constant. Move the body of `sendWaitingFiles()` into a new i
     /**
      * Static entry point. Resolves the API client from globals and delegates.
      *
-     * On an authentication failure every waiting file is marked with the
-     * login-error status, exactly as before — construction must therefore
-     * stay inside the try.
+     * Ordering matters and is preserved exactly: the tracker is built and the
+     * waiting rows fetched BEFORE the client is resolved, because the
+     * authentication-failure path marks those already-fetched rows with the
+     * login-error status. Construction stays inside the try for the same
+     * reason. Only ClaimRevAuthenticationException is caught, matching the
+     * original — a ModuleNotConfiguredException still propagates.
      */
     public static function sendWaitingFiles(): void
     {
@@ -1710,11 +1713,13 @@ Keep every existing constant. Move the body of `sendWaitingFiles()` into a new i
             return;
         }
 
+        $remoteTracker = new X12RemoteTracker();
+        $x12_remotes = $remoteTracker->fetchByStatus(self::STATUS_WAITING);
+
         try {
             $service = new self(ClaimRevApi::makeFromGlobals());
         } catch (ClaimRevAuthenticationException) {
-            $remoteTracker = new X12RemoteTracker();
-            foreach ($remoteTracker->fetchByStatus(self::STATUS_WAITING) as $x12_remote) {
+            foreach ($x12_remotes as $x12_remote) {
                 $x12_remote['status'] = self::STATUS_LOGIN_ERROR;
                 $x12_remote['messages'] = 'Invalid Username or Password.';
                 $remoteTracker->update($x12_remote);
@@ -1722,11 +1727,52 @@ Keep every existing constant. Move the body of `sendWaitingFiles()` into a new i
             return;
         }
 
-        $service->uploadWaitingFiles();
+        $service->uploadWaitingFiles($remoteTracker, $x12_remotes);
     }
 ```
 
-Note the version check moves into the static wrapper — it gates whether any work happens at all and is not an API concern. The instance method starts from `$remoteTracker = new X12RemoteTracker();`.
+The instance method therefore takes the tracker and the rows rather than
+building them itself:
+
+```php
+    /**
+     * Upload each waiting claim file and record its outcome.
+     *
+     * @param list<array<string, mixed>> $x12_remotes Rows already fetched by the caller
+     */
+    public function uploadWaitingFiles(X12RemoteTracker $remoteTracker, array $x12_remotes): void
+    {
+        // ... the existing per-file foreach body verbatim, with
+        // $api->uploadClaimFile(...) becoming $this->api->uploadClaimFile(...) ...
+    }
+```
+
+Two reasons for this shape. It preserves the original ordering exactly — the
+rows are fetched once, before any client resolution, and the same array is
+what the auth-failure path marks. And it makes the instance method genuinely
+testable: the test injects a stub tracker and a literal row array, so the
+upload loop can be exercised without `X12RemoteTracker` ever being constructed
+for real.
+
+The version check moves into the static wrapper: it gates whether any work
+happens at all and is not an API concern.
+
+**Update the Step 2 test accordingly** — construct the stub tracker explicitly
+and pass it in, rather than relying on the production code to build one:
+
+```php
+        $tracker = new \OpenEMR\Billing\BillingProcessor\X12RemoteTracker();
+        $rows = [[
+            'x12_filename' => 'claim1.txt',
+            'x12_sftp_local_dir' => $this->siteDir . '/documents/edi/',
+            'status' => 'waiting',
+        ]];
+
+        (new ClaimUpload($factory->api))->uploadWaitingFiles($tracker, $rows);
+```
+
+`ClaimRevStubState::$x12Rows` is then only needed by tests that exercise the
+static wrapper, which these do not.
 
 - [ ] **Step 5: Run to verify it passes**
 
@@ -1801,6 +1847,22 @@ git commit -m "docs: changelog and follow-ups for phase 2 of the DI seam (#24)"
 - `src/PaymentAdvicePostingService.php`'s diff contains no billing-related line.
 - `src/ReconciliationService.php`'s `reconcile()` is unchanged.
 - CI green on PHP 8.2 and 8.3.
+
+## Suspected pre-existing bug found during recon — not touched by this plan
+
+`ClaimUpload::sendWaitingFiles()` calls `new X12RemoteTracker()`
+unconditionally. That is real OpenEMR core code which `extends BaseService`,
+whose constructor calls `OEGlobalsBag::getInstance()->getKernel()` — the method
+that does not exist on OpenEMR 8.0.x and caused the 2.1.7 outage. If that
+reading is right, auto-send of claim files is already broken on 8.0.x today,
+independently of anything in this refactor, and this module cannot fix it
+because the offending constructor is in core, not here.
+
+It has likely gone unnoticed because auto-send is off by default
+(`oe_claimrev_config_auto_send_claim_files`). **Worth confirming on the 8.0.x
+test container before the next release**, and worth a separate issue if
+confirmed. Explicitly out of scope here: dropping `ClaimUpload`'s own
+`extends BaseService` (Task 9) does not address it.
 
 ## Deliberately still open after phase 2
 
