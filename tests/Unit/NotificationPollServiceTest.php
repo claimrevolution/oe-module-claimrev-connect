@@ -29,7 +29,13 @@ final class NotificationPollServiceTest extends TestCase
 
         (new NotificationPollService($factory->api))->pollNotifications(['admin']);
 
-        self::assertStringContainsString('/api/NotificationMgmt/v1/GetPortalNotifications', $factory->requestTarget());
+        // Assert the whole target, including isReadFilter: flipping it to
+        // true would silently start re-delivering notifications the user has
+        // already read, which a path-only assertion would not catch.
+        self::assertSame(
+            '/api/NotificationMgmt/v1/GetPortalNotifications?isReadFilter=false',
+            $factory->requestTarget(),
+        );
     }
 
     public function testPollNotificationsCreatesAPnoteForEachRecipient(): void

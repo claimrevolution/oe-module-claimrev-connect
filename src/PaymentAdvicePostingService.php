@@ -872,9 +872,7 @@ class PaymentAdvicePostingService
      */
     private static function markWorkedOnClaimRev(array $paymentData): void
     {
-        $paymentInfo = is_array($paymentData['paymentInfo'] ?? null) ? $paymentData['paymentInfo'] : [];
-        if (TypeCoerce::asBool($paymentInfo['isWorked'] ?? false)) {
-            // Already marked as worked, don't toggle it back
+        if (!self::shouldNotifyClaimRevWorked($paymentData)) {
             return;
         }
 
@@ -883,6 +881,24 @@ class PaymentAdvicePostingService
         } catch (ClaimRevException) {
             // Best-effort: OpenEMR posting already succeeded, don't fail over this
         }
+    }
+
+    /**
+     * Whether this advice still needs the worked-toggle sent to ClaimRev.
+     *
+     * The API toggles rather than sets, so calling it for an advice already
+     * marked worked would flip the flag back off. Extracted from
+     * markWorkedOnClaimRev() so this decision can be tested directly: that
+     * method is private and resolves a live client, so the guard was
+     * previously unreachable from a test, and inverting it corrupted
+     * ClaimRev-side worked state with nothing to catch it.
+     *
+     * @param array<string, mixed> $paymentData The full ClaimPaymentAggregation
+     */
+    public static function shouldNotifyClaimRevWorked(array $paymentData): bool
+    {
+        $paymentInfo = is_array($paymentData['paymentInfo'] ?? null) ? $paymentData['paymentInfo'] : [];
+        return !TypeCoerce::asBool($paymentInfo['isWorked'] ?? false);
     }
 
     /**

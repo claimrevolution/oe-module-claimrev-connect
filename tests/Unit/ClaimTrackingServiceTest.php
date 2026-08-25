@@ -44,8 +44,12 @@ final class ClaimTrackingServiceTest extends TestCase
 
     public function testBatchSyncReportsEveryPcnAsFailedWhenTheApiIsDown(): void
     {
-        // The static wrapper owns this path: construction succeeds, the
-        // instance call fails, and every requested PCN comes back tagged.
+        // The catch exercised here is the one INSIDE the instance method, not
+        // the static wrapper's. Both return the same tagged summary, so the
+        // contract is identical either way; the wrapper's own catch (which
+        // fires when makeFromGlobals() itself throws) is not covered, because
+        // reaching it needs a Kernel in globals the stub layer lacks.
+        // checkStatus276()'s equivalent path is likewise uncovered.
         $factory = new MockApiFactory([new \GuzzleHttp\Psr7\Response(500, [], 'boom')]);
 
         $summary = (new ClaimTrackingService($factory->api))->syncBatchViaApi(['1-1', '2-2']);

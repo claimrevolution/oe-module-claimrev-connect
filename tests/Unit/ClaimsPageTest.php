@@ -60,10 +60,14 @@ final class ClaimsPageTest extends TestCase
         self::assertSame('Accepted', $result[0]['listName']);
     }
 
-    public function testFetchClaimStatusesLetsApiFailuresPropagateToTheWrapper(): void
+    public function testFetchClaimStatusesLetsApiFailuresReachItsCaller(): void
     {
-        // The instance method throws; the static wrapper is what converts a
-        // failure into an empty list, preserving long-standing behaviour.
+        // Covers the instance method only. The static getClaimStatuses()
+        // wrapper catches ClaimRevException and returns [] — long-standing
+        // behaviour that silently empties the Claims-tab status dropdown
+        // during an outage — but that wrapper is NOT exercised here: it calls
+        // makeFromGlobals(), which needs a Kernel in globals that the stub
+        // layer does not yet provide. That gap is recorded as a follow-up.
         $factory = new MockApiFactory([new Response(503, [], 'down')]);
 
         $this->expectException(ClaimRevApiException::class);

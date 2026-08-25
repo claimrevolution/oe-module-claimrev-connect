@@ -30,4 +30,58 @@ final class PaymentAdvicePostingServiceTest extends TestCase
 
         self::assertSame('CHK-9', $factory->requestBody()['paymentInfo']['checkNumber']);
     }
+
+    // The ClaimRev endpoint TOGGLES isWorked rather than setting it, so this
+    // guard is the only thing stopping an already-worked advice from being
+    // flipped back to unworked on every subsequent post. Mutation testing
+    // found that inverting it produced no test failure at all, which is why
+    // the decision now lives in its own predicate and is pinned here.
+
+    public function testAlreadyWorkedAdviceIsNotNotifiedAgain(): void
+    {
+        self::assertFalse(PaymentAdvicePostingService::shouldNotifyClaimRevWorked([
+            'paymentAdviceId' => 'pa-1',
+            'paymentInfo' => ['isWorked' => true],
+        ]));
+    }
+
+    public function testUnworkedAdviceIsNotified(): void
+    {
+        self::assertTrue(PaymentAdvicePostingService::shouldNotifyClaimRevWorked([
+            'paymentAdviceId' => 'pa-1',
+            'paymentInfo' => ['isWorked' => false],
+        ]));
+    }
+
+    public function testAdviceWithNoWorkedFlagIsTreatedAsUnworked(): void
+    {
+        self::assertTrue(PaymentAdvicePostingService::shouldNotifyClaimRevWorked([
+            'paymentAdviceId' => 'pa-1',
+            'paymentInfo' => [],
+        ]));
+    }
+
+    public function testMalformedPaymentInfoIsTreatedAsUnworked(): void
+    {
+        // paymentInfo absent entirely, and present but not an array.
+        self::assertTrue(PaymentAdvicePostingService::shouldNotifyClaimRevWorked(['paymentAdviceId' => 'pa-1']));
+        self::assertTrue(PaymentAdvicePostingService::shouldNotifyClaimRevWorked([
+            'paymentAdviceId' => 'pa-1',
+            'paymentInfo' => 'not-an-array',
+        ]));
+    }
+
+    public function testTruthyWorkedFlagVariantsAreAllTreatedAsWorked(): void
+    {
+        // The API sends JSON, but a stringly-typed 1 or "true" must not be
+        // read as "unworked" and cause a re-toggle.
+        foreach ([true, 1, '1', 'true'] as $worked) {
+            self::assertFalse(
+                PaymentAdvicePostingService::shouldNotifyClaimRevWorked([
+                    'paymentInfo' => ['isWorked' => $worked],
+                ]),
+                'isWorked=' . var_export($worked, true) . ' must count as worked',
+            );
+        }
+    }
 }
