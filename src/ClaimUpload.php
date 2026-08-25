@@ -19,9 +19,16 @@ namespace OpenEMR\Modules\ClaimRevConnector;
 use OpenEMR\BC\ServiceContainer;
 use OpenEMR\Billing\BillingProcessor\X12RemoteTracker;
 use OpenEMR\Core\OEGlobalsBag;
-use OpenEMR\Services\BaseService;
 
-class ClaimUpload extends BaseService
+/**
+ * Uploads waiting X12 claim files to ClaimRev.
+ *
+ * Does not extend BaseService: nothing here used it — every entry point is
+ * static and the class was never instantiated — and its constructor queries
+ * the database and calls OEGlobalsBag::getKernel(), which does not exist on
+ * OpenEMR 8.0.x.
+ */
+class ClaimUpload
 {
     public const STATUS_WAITING = 'waiting';
     public const STATUS_PARAMETER_ERROR = 'parameter-error';
@@ -52,11 +59,20 @@ class ClaimUpload extends BaseService
     /** @var list<string> */
     protected array $validationMessages = [];
 
-    public function __construct()
+    public function __construct(private readonly ClaimRevApi $api)
     {
-        parent::__construct(self::TABLE_NAME);
     }
 
+    /**
+     * Static entry point. Resolves the API client from globals and delegates.
+     *
+     * Ordering matters and is preserved exactly: the tracker is built and the
+     * waiting rows fetched BEFORE the client is resolved, because the
+     * authentication-failure path marks those already-fetched rows with the
+     * login-error status. Construction stays inside the try for the same
+     * reason. Only ClaimRevAuthenticationException is caught, matching the
+     * original — a ModuleNotConfiguredException still propagates.
+     */
     public static function sendWaitingFiles(): void
     {
         // Best-effort version check on the 24h throttle. ClaimRev may flag
@@ -74,7 +90,7 @@ class ClaimUpload extends BaseService
         $x12_remotes = $remoteTracker->fetchByStatus(self::STATUS_WAITING);
 
         try {
-            $api = ClaimRevApi::makeFromGlobals();
+            $service = new self(ClaimRevApi::makeFromGlobals());
         } catch (ClaimRevAuthenticationException) {
             // Mark all waiting files as login error
             foreach ($x12_remotes as $x12_remote) {
@@ -85,6 +101,16 @@ class ClaimUpload extends BaseService
             return;
         }
 
+        $service->uploadWaitingFiles($remoteTracker, $x12_remotes);
+    }
+
+    /**
+     * Upload each waiting claim file and record its outcome.
+     *
+     * @param list<array<string, mixed>> $x12_remotes Rows already fetched by the caller
+     */
+    public function uploadWaitingFiles(X12RemoteTracker $remoteTracker, array $x12_remotes): void
+    {
         foreach ($x12_remotes as $x12_remote) {
             /** @var string */
             $x12_remoteFilename = $x12_remote['x12_filename'];
@@ -110,7 +136,7 @@ class ClaimUpload extends BaseService
 
             // Upload the file
             try {
-                $api->uploadClaimFile($claim_file_contents, $x12_remoteFilename);
+                $this->api->uploadClaimFile($claim_file_contents, $x12_remoteFilename);
             } catch (ClaimRevApiException) {
                 $x12_remote['status'] = self::STATUS_UPLOAD_ERROR;
                 $x12_remote['messages'] = 'Could not upload file.';
