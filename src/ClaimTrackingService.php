@@ -74,6 +74,10 @@ class ClaimTrackingService
     /** @var int Days without ERA before a billed claim is considered stale */
     private const STALE_THRESHOLD_DAYS = 45;
 
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
     /**
      * Parse a patient control number into pid and encounter.
      *
@@ -463,22 +467,39 @@ class ClaimTrackingService
     }
 
     /**
-     * Perform a real-time status check via ClaimRev API.
+     * Static entry point. Resolves the API client from globals and delegates.
+     *
+     * Construction happens inside the try because makeFromGlobals() itself
+     * can throw, and the original code caught that here.
      *
      * @return array{success: bool, message: string, statusData: array<string, mixed>}
      */
     public static function checkStatus276(int $pid, int $encounter, int $payerType): array
     {
+        try {
+            $service = new self(ClaimRevApi::makeFromGlobals());
+        } catch (ClaimRevException) {
+            return ['success' => false, 'message' => 'Failed to connect to ClaimRev', 'statusData' => []];
+        }
+        return $service->checkClaimStatusViaApi($pid, $encounter, $payerType);
+    }
+
+    /**
+     * Perform a real-time status check via ClaimRev API.
+     *
+     * @return array{success: bool, message: string, statusData: array<string, mixed>}
+     */
+    public function checkClaimStatusViaApi(int $pid, int $encounter, int $payerType): array
+    {
         $pcn = $pid . '-' . $encounter;
 
         try {
-            $api = ClaimRevApi::makeFromGlobals();
             $model = new ClaimSearchModel();
             $model->patientControlNumbers = [$pcn];
             $model->pagingSearch->pageSize = 1;
             $model->pagingSearch->pageIndex = 0;
 
-            $result = $api->searchClaims($model);
+            $result = $this->api->searchClaims($model);
             $rawClaims = $result['results'] ?? [];
             $claims = is_array($rawClaims) ? $rawClaims : [];
         } catch (ClaimRevException) {
@@ -597,12 +618,36 @@ class ClaimTrackingService
     }
 
     /**
+     * Static entry point. Resolves the API client from globals and delegates.
+     *
+     * @param list<string> $pcns
+     * @return array<string, mixed>
+     */
+    public static function batchSyncFromClaimRev(array $pcns): array
+    {
+        $summary = ['synced' => 0, 'errors' => 0, 'notFound' => 0, 'results' => []];
+        if ($pcns === []) {
+            return $summary;
+        }
+        try {
+            $service = new self(ClaimRevApi::makeFromGlobals());
+        } catch (ClaimRevException) {
+            $summary['errors'] = count($pcns);
+            foreach ($pcns as $pcn) {
+                $summary['results'][] = ['pcn' => $pcn, 'success' => false, 'message' => 'ClaimRev connection failed'];
+            }
+            return $summary;
+        }
+        return $service->syncBatchViaApi($pcns);
+    }
+
+    /**
      * Batch sync multiple claims from ClaimRev.
      *
      * @param list<string> $pcns Patient control numbers to sync
      * @return array{synced: int, errors: int, notFound: int, results: list<array{pcn: string, success: bool, message: string}>}
      */
-    public static function batchSyncFromClaimRev(array $pcns): array
+    public function syncBatchViaApi(array $pcns): array
     {
         $summary = ['synced' => 0, 'errors' => 0, 'notFound' => 0, 'results' => []];
 
@@ -611,13 +656,12 @@ class ClaimTrackingService
         }
 
         try {
-            $api = ClaimRevApi::makeFromGlobals();
             $model = new ClaimSearchModel();
             $model->patientControlNumbers = $pcns;
             $model->pagingSearch->pageSize = count($pcns);
             $model->pagingSearch->pageIndex = 0;
 
-            $result = $api->searchClaims($model);
+            $result = $this->api->searchClaims($model);
             $rawClaims = $result['results'] ?? [];
             $crClaims = is_array($rawClaims) ? $rawClaims : [];
         } catch (ClaimRevException) {
