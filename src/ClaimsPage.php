@@ -18,6 +18,10 @@ use OpenEMR\Modules\ClaimRevConnector\Dto\ClaimSearchResult;
 
 class ClaimsPage
 {
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
     /**
      * @param array<string, mixed> $postData
      * @return array{results: list<ClaimSearchResult>, totalRecords: int}
@@ -49,14 +53,31 @@ class ClaimsPage
     }
 
     /**
+     * Static entry point. Resolves the API client from globals and delegates.
+     *
+     * Deliberately has no catch: failures propagate to the caller, which is
+     * public/claim_export_csv.php's own try/catch. Adding one here would
+     * change what that endpoint sees.
+     *
      * @param array<string, mixed> $postData
      * @return array<string, mixed>
      */
     public static function exportCsv(array $postData): array
     {
+        return (new self(ClaimRevApi::makeFromGlobals()))->exportClaimsCsv($postData);
+    }
+
+    /**
+     * Export the current claims search as CSV.
+     *
+     * @param array<string, mixed> $postData
+     * @return array<string, mixed> Contains fileText and fileName
+     * @throws ClaimRevApiException on API error
+     */
+    public function exportClaimsCsv(array $postData): array
+    {
         $model = self::buildSearchModel($postData, 0, 0);
-        $api = ClaimRevApi::makeFromGlobals();
-        return $api->searchClaimsCsv($model);
+        return $this->api->searchClaimsCsv($model);
     }
 
     /**
@@ -105,16 +126,33 @@ class ClaimsPage
     }
 
     /**
+     * Static entry point. Resolves the API client from globals and delegates.
+     *
+     * Returns an empty list on any ClaimRevException. This catch is broader
+     * than the module's current convention would choose, but it is
+     * long-standing behaviour that public/claims.php relies on for its status
+     * dropdown, so it is preserved verbatim rather than narrowed here.
+     *
      * @return list<array<string, mixed>>
      */
     public static function getClaimStatuses(): array
     {
         try {
-            $api = ClaimRevApi::makeFromGlobals();
-            return $api->getClaimStatuses();
+            return (new self(ClaimRevApi::makeFromGlobals()))->fetchClaimStatuses();
         } catch (ClaimRevException) {
             return [];
         }
+    }
+
+    /**
+     * Fetch the available claim statuses.
+     *
+     * @return list<array<string, mixed>>
+     * @throws ClaimRevApiException on API error
+     */
+    public function fetchClaimStatuses(): array
+    {
+        return $this->api->getClaimStatuses();
     }
 
     /**
