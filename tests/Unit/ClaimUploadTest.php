@@ -51,6 +51,15 @@ final class ClaimUploadTest extends TestCase
         self::assertContains(ClaimUpload::STATUS_SUCCESS, $statuses);
     }
 
+    // ClaimUpload deliberately reads a possibly-missing claim file and
+    // handles the false return; PHP's own file_get_contents() emits an
+    // E_WARNING on that path, which is expected here and must not fail the
+    // suite under phpunit.xml's failOnWarning setting. #[WithoutErrorHandler]
+    // does not help: it removes PHPUnit's handler entirely, so the warning
+    // falls through to PHP's default handler and prints to output instead,
+    // which PHPUnit's risky-test check then flags just the same. Installing
+    // a handler that swallows only E_WARNING for the duration of this call
+    // is the narrowest fix that leaves production code untouched.
     public function testUploadWaitingFilesMarksTheRowWhenTheFileCannotBeRead(): void
     {
         $tracker = new X12RemoteTracker();
@@ -61,9 +70,6 @@ final class ClaimUploadTest extends TestCase
         ]];
         $factory = MockApiFactory::withJson([]);
 
-        // file_get_contents() emits a native E_WARNING for the expected
-        // missing file; production code does not suppress it, so the test
-        // does instead rather than let PHPUnit's failOnWarning fail the run.
         set_error_handler(static fn (): bool => true, E_WARNING);
         try {
             (new ClaimUpload($factory->api))->uploadWaitingFiles($tracker, $rows);
