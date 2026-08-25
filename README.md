@@ -189,21 +189,27 @@ the underlying type error.
 `composer rector-check` keeps the module on modern PHP idioms; run
 `composer rector-fix` to apply suggestions.
 
-### Branches
+### Branches and version support
 
-This module is maintained on two branches in the ClaimRev fork:
+There is **one maintained line**, `main`. A single build covers OpenEMR 7.x
+and 8.x: the `src/Compat/` shim layer activates per host, and `CsrfHelper`
+detects the 7.x versus 8.x `CsrfUtils::collectCsrfToken` signature at
+runtime, so the same binary works on both.
 
-- **`master`** — targets upstream OpenEMR's master branch. No back-compat
-  shims, latest PHP / Symfony / dependency versions.
-- **`release/v7-compat`** — targets OpenEMR 7.x. Adds a thin
-  `src/Compat/` shim layer plus a reflection-based `CsrfHelper` that
-  detects the 7.x vs 8.x `CsrfUtils::collectCsrfToken` signature. The
-  module-internal API is the same; only the OpenEMR-internal API hooks
-  differ.
+Older cores are supported by **pinning a release**, not by a branch:
 
-After merging changes from `master` into `release/v7-compat`, run
-`tools/v7-overlay-restore.sh` to put the shim files back. The script is
-idempotent.
+```bash
+composer require claimrevolution/oe-module-claimrev-connect:2.1.7
+```
+
+Every tag stays on Packagist, so a pin costs nothing to maintain — unlike a
+parallel branch, which has to be kept in sync by hand and drifts the moment
+someone forgets.
+
+Which version to pin is documented in the compatibility matrix in the
+[OpenEMR manual](https://docs.claimrev.com/doku.php?id=openemr_manual). The
+short version: **use the latest release on any OpenEMR 8.x**, because
+v2.1.6 and earlier fatal on the 8.0.x patch line.
 
 ---
 
@@ -232,13 +238,17 @@ WHERE running = 1
 
 The watchdog excludes itself for the reason noted above.
 
-### Wrong build for the OpenEMR version
+### Wrong module version for the OpenEMR version
 
-The `master` branch ships clean for OpenEMR 8.x. For 7.x, install from
-the `release/v7-compat` branch — the shim layer is required there.
-Symptoms of running the wrong build are typically `Class not found`
-errors for `OpenEMR\Common\Csrf\CsrfUtils` (8.x build on 7.x) or
-unexpected method-signature errors (7.x build on 8.x).
+There is no separate build per core — one release covers 7.x and 8.x — but
+the version still matters. On the OpenEMR **8.0.x** patch line, v2.1.6 and
+earlier fatal with `Call to undefined method OEGlobalsBag::getKernel()`,
+because 8.0.x ships an `OEGlobalsBag` without that method while the
+flex/master line has it. The visible symptoms are blank module pages, or
+the **Patient Portal / API** panel vanishing from the patient dashboard.
+
+Upgrading to v2.1.7 or later resolves it. See the compatibility matrix in
+the [OpenEMR manual](https://docs.claimrev.com/doku.php?id=openemr_manual).
 
 ### "Already posted" warnings on a payment advice that wasn't
 
