@@ -22,24 +22,24 @@ use OpenEMR\Core\OEGlobalsBag;
 
 class NotificationPollService
 {
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
+    /**
+     * Static entry point for the background service. Resolves the API client
+     * from globals and delegates.
+     *
+     * Construction stays inside the try because makeFromGlobals() can throw
+     * and the original code returned silently on that. This runs on a cron
+     * tick, so an escaping exception would surface very differently.
+     */
     public static function run(): void
     {
         require_once OEGlobalsBag::getInstance()->getString('fileroot') . "/library/pnotes.inc.php";
 
         $enabledRaw = OEGlobalsBag::getInstance()->get(GlobalConfig::CONFIG_ENABLE_NOTIFICATIONS) ?? '1';
         if (in_array($enabledRaw, [false, '', '0', 0], true)) {
-            return;
-        }
-
-        try {
-            $api = ClaimRevApi::makeFromGlobals();
-        } catch (ClaimRevException) {
-            return;
-        }
-
-        try {
-            $notifications = $api->getPortalNotifications(false);
-        } catch (ClaimRevException) {
             return;
         }
 
@@ -50,6 +50,28 @@ class NotificationPollService
         $recipients = array_values(array_filter(array_map(trim(...), explode(';', $recipientSetting))));
         if ($recipients === []) {
             $recipients = ['admin'];
+        }
+
+        try {
+            $service = new self(ClaimRevApi::makeFromGlobals());
+        } catch (ClaimRevException) {
+            return;
+        }
+
+        $service->pollNotifications($recipients);
+    }
+
+    /**
+     * Fetch unread portal notifications and deliver them as pnotes.
+     *
+     * @param list<string> $recipients OpenEMR usernames to deliver to
+     */
+    public function pollNotifications(array $recipients): void
+    {
+        try {
+            $notifications = $this->api->getPortalNotifications(false);
+        } catch (ClaimRevException) {
+            return;
         }
 
         foreach ($notifications as $notification) {
@@ -106,7 +128,7 @@ class NotificationPollService
             );
 
             try {
-                $api->setNotificationReadStatus($portalId, true);
+                $this->api->setNotificationReadStatus($portalId, true);
             } catch (ClaimRevException) {
                 // Non-fatal — notification was already delivered.
             }
