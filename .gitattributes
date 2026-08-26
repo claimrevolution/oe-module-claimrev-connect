@@ -1,0 +1,23 @@
+# Keep development-only files out of the distribution archive.
+#
+# GitHub builds the "Source code (zip)" on a release from `git archive`, which
+# honours export-ignore. Everything listed here stays in the repository but is
+# omitted from the download, so what a site administrator unpacks into
+# custom_modules/ is just the module.
+#
+# helpdocs/ is deliberately NOT ignored — that is user-facing help content.
+
+/.github            export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+
+# Test suite and its configuration.
+/tests              export-ignore
+/phpunit.xml        export-ignore
+
+# Internal design and planning notes, not customer documentation.
+/docs               export-ignore
+
+# Demo/test fixtures. These insert sample patients and claims and are meant
+# for test instances, not for a production install.
+/tools              export-ignore
