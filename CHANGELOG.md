@@ -1,3 +1,8 @@
+# 2.1.9
+Packaging only — no functional change from 2.1.8. **Install this rather than 2.1.8.**
+- Add `.gitattributes` so the release archive contains only the module. The download previously also carried the test suite, internal design notes, CI config and demo fixtures; none of it loads at runtime, but none of it belongs in what an administrator unpacks into `custom_modules/`. `helpdocs/` is still included — that one is user-facing.
+- Why this is a separate release rather than a corrected 2.1.8: the fix landed one commit after the 2.1.8 tag, and moving a published tag does not work. Packagist locks a stable version's source reference on first sight, deliberately, so that `vendor/pkg:1.2.3` always resolves to the same code — re-tagging is refused and flagged. Their documented remedy is to publish a new version, so that is what this is. 2.1.8 remains installable and functionally identical; it simply ships a noisier archive.
+
 # 2.1.8
 Fix — the Claims and ERA tabs broke when the client ID / secret were not configured:
 - `ModuleNotConfiguredException` extended `\RuntimeException` directly rather than `ClaimRevException`, so it fell outside every `catch (ClaimRevException)` fault boundary in the module. `ClaimRevApi::makeFromGlobals()` throws it for a missing client ID, which meant an unconfigured install fatalled instead of degrading. The Claims tab died on plain page load — `claims.php` calls `ClaimsPage::getClaimStatuses()` before emitting any HTML, and that method's own `catch (ClaimRevException)` never matched — and the ERA tab died on Submit, where the boundary in `era.php` was narrower still (`ClaimRevApiException` only, which also misses authentication failures from a wrong secret).
