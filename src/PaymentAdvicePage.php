@@ -48,13 +48,31 @@ use OpenEMR\Common\Database\QueryUtils;
  */
 class PaymentAdvicePage
 {
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
+    /**
+     * Static entry point. Resolves the API client from globals and delegates.
+     *
+     * No catch by design: public/payment_advice.php owns the error handling
+     * for this path, and adding one here would hide failures from it.
+     *
+     * @param array<string, mixed> $postData
+     * @return array<string, mixed>
+     */
+    public static function searchPaymentInfo(array $postData): array
+    {
+        return (new self(ClaimRevApi::makeFromGlobals()))->fetchPaymentInfo($postData);
+    }
+
     /**
      * Build a search model from POST data and execute the search.
      *
      * @param array{receivedDateStart?: string, receivedDateEnd?: string, serviceDateStart?: string, serviceDateEnd?: string, patientFirstName?: string, patientLastName?: string, payerNumber?: string, patientControlNumber?: string, checkNumber?: string, isWorked?: string, sortField?: string, sortDirection?: string, pageIndex?: int} $postData
      * @return array{results: list<PaymentAdviceShape>, totalRecords: int}
      */
-    public static function searchPaymentInfo(array $postData): array
+    public function fetchPaymentInfo(array $postData): array
     {
         $pageIndex = $postData['pageIndex'] ?? 0;
 
@@ -79,8 +97,7 @@ class PaymentAdvicePage
         $model->pagingSearch->sortField = $postData['sortField'] ?? '';
         $model->pagingSearch->sortDirection = $postData['sortDirection'] ?? '';
 
-        $api = ClaimRevApi::makeFromGlobals();
-        $raw = $api->searchPaymentInfo($model);
+        $raw = $this->api->searchPaymentInfo($model);
 
         $results = [];
         $rawResults = $raw['results'] ?? null;
@@ -99,6 +116,18 @@ class PaymentAdvicePage
     }
 
     /**
+     * Static entry point. Resolves the API client from globals and delegates.
+     *
+     * No catch by design, matching today's behaviour.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function getPaymentAdviceById(string $paymentAdviceId): ?array
+    {
+        return (new self(ClaimRevApi::makeFromGlobals()))->fetchPaymentAdviceById($paymentAdviceId);
+    }
+
+    /**
      * Fetch a single payment advice aggregation by id.
      *
      * Returns the raw API entry (the same shape PaymentAdvicePostingService
@@ -108,7 +137,7 @@ class PaymentAdvicePage
      *
      * @return array<string, mixed>|null
      */
-    public static function getPaymentAdviceById(string $paymentAdviceId): ?array
+    public function fetchPaymentAdviceById(string $paymentAdviceId): ?array
     {
         if ($paymentAdviceId === '') {
             return null;
@@ -119,8 +148,7 @@ class PaymentAdvicePage
         $model->pagingSearch->pageIndex = 0;
         $model->pagingSearch->pageSize = 1;
 
-        $api = ClaimRevApi::makeFromGlobals();
-        $raw = $api->searchPaymentInfo($model);
+        $raw = $this->api->searchPaymentInfo($model);
 
         $rawResults = $raw['results'] ?? null;
         if (!is_array($rawResults)) {

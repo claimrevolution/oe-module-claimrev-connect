@@ -18,33 +18,65 @@ namespace OpenEMR\Modules\ClaimRevConnector;
 
 class EraSearch
 {
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
     /**
-     * Search for downloadable ERA files.
+     * Static entry point for ERA file search. Resolves the client from
+     * globals and delegates.
      *
-     * @return array<string, mixed>|false Returns false on error for backward compatibility
+     * Returns false when the module is unconfigured or the API call fails,
+     * which is the contract EraPage::searchEras() tests for.
+     *
+     * @return array<string, mixed>|false Returns false on error
      */
     public static function search(object $search): array|false
     {
         try {
-            $api = ClaimRevApi::makeFromGlobals();
-            return $api->searchDownloadableFiles($search);
+            return (new self(ClaimRevApi::makeFromGlobals()))->searchDownloadableFiles($search);
         } catch (ClaimRevException) {
             return false;
         }
     }
 
     /**
-     * Download an ERA file by object ID.
+     * Static entry point for ERA download. Resolves the client from globals
+     * and delegates.
      *
-     * @return array<string, mixed>|false Returns false on error for backward compatibility
+     * Returns false when the module is unconfigured or the API call fails,
+     * which is the contract EraPage::downloadEra() tests for.
+     *
+     * @return array<string, mixed>|false Returns false on error
      */
     public static function downloadEra(string $objectId): array|false
     {
         try {
-            $api = ClaimRevApi::makeFromGlobals();
-            return $api->getFileForDownload($objectId);
+            return (new self(ClaimRevApi::makeFromGlobals()))->fetchFileForDownload($objectId);
         } catch (ClaimRevException) {
             return false;
         }
+    }
+
+    /**
+     * Search for downloadable ERA files.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function searchDownloadableFiles(object $search): array
+    {
+        return $this->api->searchDownloadableFiles($search);
+    }
+
+    /**
+     * Fetch a single ERA file's contents by object ID.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function fetchFileForDownload(string $objectId): array
+    {
+        return $this->api->getFileForDownload($objectId);
     }
 }

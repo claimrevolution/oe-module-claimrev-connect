@@ -1,3 +1,7 @@
 .claimrev-api-reference.md
 *.stackdump
 *.zip
+vendor/
+composer.lock
+.phpunit.cache/
+.phpunit.result.cache

@@ -18,14 +18,38 @@ namespace OpenEMR\Modules\ClaimRevConnector;
 
 class ClaimSearch
 {
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
     /**
-     * Search for claims.
+     * Static entry point. Resolves the API client from globals and delegates.
      *
-     * @return array<string, mixed>|false Returns false on error for backward compatibility
+     * Returns false only when the module is not configured, which is the
+     * contract ClaimsPage's ($raw === false) branches test for. Genuine
+     * failures — an outage, rejected credentials, an HTTP error — are left to
+     * propagate so public/claims.php can surface them as a visible error
+     * rather than an empty result set that reads as "no matches".
+     *
+     * @return array<string, mixed>|false False when the module is unconfigured
      */
     public static function search(object $search): array|false
     {
-        $api = ClaimRevApi::makeFromGlobals();
-        return $api->searchClaims($search);
+        try {
+            return (new self(ClaimRevApi::makeFromGlobals()))->searchClaims($search);
+        } catch (ModuleNotConfiguredException) {
+            return false;
+        }
+    }
+
+    /**
+     * Search for claims.
+     *
+     * @return array<string, mixed>
+     * @throws ClaimRevApiException on API error
+     */
+    public function searchClaims(object $search): array
+    {
+        return $this->api->searchClaims($search);
     }
 }

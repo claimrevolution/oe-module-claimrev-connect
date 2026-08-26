@@ -50,6 +50,10 @@ use OpenEMR\Common\Database\QueryUtils;
  */
 class ReconciliationService
 {
+    public function __construct(private readonly ClaimRevApi $api)
+    {
+    }
+
     /**
      * OpenEMR claim status labels.
      *
@@ -286,9 +290,14 @@ class ReconciliationService
     }
 
     /**
-     * Batch lookup claims in ClaimRev by patient control numbers.
+     * Resolve the API client from globals and delegate.
      *
-     * @param list<string> $pcns Patient control numbers (pid-encounter format)
+     * Called from inside reconcile()'s try/catch, which turns any
+     * ClaimRevException into the partial-results warning banner. Keeping
+     * makeFromGlobals() here preserves that: an unconfigured or unreachable
+     * ClaimRev still yields OpenEMR-only results rather than an error page.
+     *
+     * @param list<string> $pcns
      * @return list<array<string, mixed>> ClaimRev claim results
      */
     private static function lookupClaimRev(array $pcns): array
@@ -297,14 +306,24 @@ class ReconciliationService
             return [];
         }
 
-        $api = ClaimRevApi::makeFromGlobals();
+        return (new self(ClaimRevApi::makeFromGlobals()))->fetchClaimsByPcns($pcns);
+    }
 
+    /**
+     * Fetch ClaimRev claims for a batch of patient control numbers.
+     *
+     * @param list<string> $pcns
+     * @return list<array<string, mixed>>
+     * @throws ClaimRevApiException on API error
+     */
+    public function fetchClaimsByPcns(array $pcns): array
+    {
         $model = new ClaimSearchModel();
         $model->patientControlNumbers = $pcns;
         $model->pagingSearch->pageSize = count($pcns);
         $model->pagingSearch->pageIndex = 0;
 
-        $result = $api->searchClaims($model);
+        $result = $this->api->searchClaims($model);
         $results = $result['results'] ?? [];
         if (!is_array($results)) {
             return [];

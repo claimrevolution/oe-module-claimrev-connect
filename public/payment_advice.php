@@ -20,7 +20,7 @@ use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Core\Header;
 use OpenEMR\Modules\ClaimRevConnector\Bootstrap;
 use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
-use OpenEMR\Modules\ClaimRevConnector\ClaimRevApiException;
+use OpenEMR\Modules\ClaimRevConnector\ClaimRevException;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
 use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 use OpenEMR\Modules\ClaimRevConnector\PaymentAdviceMockService;
@@ -85,7 +85,7 @@ if (ModuleInput::isPostRequest() && ModuleInput::postExists('SubmitButton')) {
         }
         $datas = $result['results'];
         $totalRecords = $result['totalRecords'];
-    } catch (ClaimRevApiException) {
+    } catch (ClaimRevException) {
         $errorMessage = xlt('Failed to search payment advice. Please check your ClaimRev connection settings.');
         $datas = [];
     }
