@@ -38,6 +38,9 @@ final class ClaimRevStubState
     /** @var list<array<string, mixed>> Notes addPnote() was asked to create. */
     public static array $pnotes = [];
 
+    /** @var list<string> Tables QueryUtils::existsTable() reports as missing. */
+    public static array $missingTables = [];
+
     public static function reset(): void
     {
         self::$globals = [];
@@ -47,6 +50,7 @@ final class ClaimRevStubState
         self::$x12Rows = [];
         self::$x12Updates = [];
         self::$pnotes = [];
+        self::$missingTables = [];
     }
 
     /** Take the next queued query result, or the given default when the queue is dry. */

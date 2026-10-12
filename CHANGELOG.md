@@ -1,3 +1,12 @@
+# 2.2.0
+ZITADEL sign-in, alongside Azure B2C:
+- ClaimRev is moving its identity provider to ZITADEL. A ZITADEL client application has no client secret: it is a service user with a downloadable JSON key file (`cr-...-key.json`). The module now signs a short RS256 assertion with that key and exchanges it for an access token (JWT-bearer grant, RFC 7523) at `auth.claimrev.com` (`auth-staging.claimrev.com` for environment S), requesting the ClaimRev API project as the token audience. API calls then carry `x-auth-tenant: zitadel`, without which the API validates every bearer token as B2C.
+- The key file is loaded on the module's Setup tab (choose the file or paste it) and stored encrypted in a new `mod_claimrev_auth` table. It cannot be a Global setting: `globals.gl_value` is `varchar(255)` and an encrypted key is about 2 KB. Saving the key immediately requests a token and calls the API, so a bad key or a missing ClaimRev-side registration shows up on the spot.
+- A stored key takes precedence; without one the module uses the Client ID / Client Secret exactly as before. Sites switch over by loading a key and switch back by removing it, so B2C sites need no change.
+- ZITADEL tokens last 12 hours, so the module caches the token (encrypted, same table) and refreshes it 10 minutes before expiry, instead of requesting one per page load and per background-service run.
+- The Connectivity tab shows which identity provider is in use. Environment D gains two overrides, ZITADEL Instance URL and ZITADEL API Project ID.
+- Existing installs pick up the new table with Setup -> Run Upgrade; saving a key also runs it. Until the table exists the module behaves exactly as 2.1.9.
+
 # 2.1.9
 Packaging only — no functional change from 2.1.8. **Install this rather than 2.1.8.**
 - Add `.gitattributes` so the release archive contains only the module. The download previously also carried the test suite, internal design notes, CI config and demo fixtures; none of it loads at runtime, but none of it belongs in what an administrator unpacks into `custom_modules/`. `helpdocs/` is still included — that one is user-facing.

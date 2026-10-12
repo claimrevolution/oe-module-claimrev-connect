@@ -73,4 +73,11 @@ class QueryUtils
         /** @var list<string> */
         return \ClaimRevStubState::nextQueryResult([]);
     }
+
+    /** Tables listed in ClaimRevStubState::$missingTables do not exist; every other table does. */
+    public static function existsTable(string $tableName): bool
+    {
+        self::record('EXISTS TABLE ' . $tableName, []);
+        return !in_array($tableName, \ClaimRevStubState::$missingTables, true);
+    }
 }

@@ -128,6 +128,7 @@ OpenEMR `#IfNotRow / #IfNotColumnType / #IfNotTable / #EndIf` directives.
 | `mod_claimrev_claims`                | Per-claim mirror of ClaimRev status (object id, status name/id, ERA classification, paid amount, ar_session_id, last sync). |
 | `mod_claimrev_claim_events`          | Append-only event log per claim (submitted, rejected, accepted, denied, status_check_276, era_received, payment_posted, requeued, corrected, manual_note, claimrev_sync). |
 | `mod_claimrev_patient_statements`    | Statement history for the patient balance queue (date, method, amount, status, notes). |
+| `mod_claimrev_auth`                  | Singleton row: the encrypted ZITADEL service-user key file and the cached access token. A stored key switches the module from B2C client credentials to ZITADEL. |
 
 ---
 

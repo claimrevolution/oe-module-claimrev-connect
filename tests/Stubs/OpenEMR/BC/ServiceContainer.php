@@ -10,4 +10,9 @@ class ServiceContainer
     {
         return new \ClaimRevStubLogger();
     }
+
+    public static function getCrypto(): \OpenEMR\Common\Crypto\CryptoGen
+    {
+        return new \OpenEMR\Common\Crypto\CryptoGen();
+    }
 }

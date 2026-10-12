@@ -66,7 +66,8 @@ $installedVersion = Bootstrap::MODULE_VERSION;
                 </div>
                 <div class="card-body">
                     <ul class="mb-0">
-                        <li><?php echo xlt("Authority");?>: <?php echo text($connectivityInfo->client_authority); ?></li>
+                        <li><?php echo xlt("Identity Provider");?>: <?php echo text($connectivityInfo->identityProvider); ?></li>
+                        <li><?php echo xlt("Authority");?>:<?php echo text($connectivityInfo->client_authority); ?></li>
                         <li><?php echo xlt("Client ID");?>: <?php echo text($connectivityInfo->clientId); ?></li>
                         <li><?php echo xlt("Client Scope");?>: <?php echo text($connectivityInfo->client_scope); ?></li>
                         <li><?php echo xlt("API Server");?>: <?php echo text($connectivityInfo->api_server); ?></li>

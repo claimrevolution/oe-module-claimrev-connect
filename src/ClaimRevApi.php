@@ -73,7 +73,8 @@ readonly class ClaimRevApi
     /**
      * Create a ClaimRevApi instance using global configuration.
      *
-     * Acquires an OAuth access token and returns a configured client.
+     * Acquires an OAuth access token and returns a configured client. A stored
+     * ZITADEL key selects ZITADEL; otherwise the B2C client ID / secret are used.
      *
      * @throws ClaimRevAuthenticationException if token acquisition fails
      * @throws ModuleNotConfiguredException if required settings are missing
@@ -82,28 +83,24 @@ readonly class ClaimRevApi
     {
         $bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
         $globalsConfig = $bootstrap->getGlobalConfig();
-
-        $authority = $globalsConfig->getClientAuthority();
-        $clientId = $globalsConfig->getClientId();
-        $scope = $globalsConfig->getClientScope();
-        $clientSecret = $globalsConfig->getClientSecret();
         $apiServer = $globalsConfig->getApiServer();
 
-        if (!is_string($clientId) || $clientId === '') {
-            throw new ModuleNotConfiguredException('ClaimRev client ID is not configured');
-        }
-        if (!is_string($clientSecret) || $clientSecret === '') {
-            throw new ClaimRevAuthenticationException('ClaimRev client secret could not be decrypted');
-        }
+        $headers = array_merge([
+            'accept' => 'application/json',
+            'content-type' => 'application/json',
+        ], self::getVersionHeaders());
 
-        $token = self::acquireAccessToken($authority, $clientId, $scope, $clientSecret);
+        if ($globalsConfig->usesZitadel()) {
+            $token = self::acquireZitadelToken($globalsConfig);
+            // Without this hint the API validates every bearer token as B2C.
+            $headers[ZitadelAuth::TENANT_HEADER] = ZitadelAuth::TENANT_HINT;
+        } else {
+            $token = self::acquireB2cToken($globalsConfig);
+        }
 
         $client = new Client([
             'base_uri' => $apiServer,
-            'headers' => array_merge([
-                'accept' => 'application/json',
-                'content-type' => 'application/json',
-            ], self::getVersionHeaders()),
+            'headers' => $headers,
             'connect_timeout' => self::HTTP_CONNECT_TIMEOUT,
             'timeout' => self::HTTP_TIMEOUT,
         ]);
@@ -112,37 +109,89 @@ readonly class ClaimRevApi
     }
 
     /**
-     * Acquire an OAuth access token from the ClaimRev authority.
+     * B2C client-credentials token.
      *
      * @throws ClaimRevAuthenticationException if token acquisition fails
+     * @throws ModuleNotConfiguredException if required settings are missing
      */
-    private static function acquireAccessToken(
-        string $authority,
-        string $clientId,
-        string $scope,
-        #[SensitiveParameter] string $clientSecret,
-    ): string {
+    private static function acquireB2cToken(GlobalConfig $globalsConfig): string
+    {
+        $authority = $globalsConfig->getClientAuthority();
+        $clientId = $globalsConfig->getClientId();
+        $scope = $globalsConfig->getClientScope();
+        $clientSecret = $globalsConfig->getClientSecret();
+
+        if (!is_string($clientId) || $clientId === '') {
+            throw new ModuleNotConfiguredException('ClaimRev client ID is not configured');
+        }
+        if (!is_string($clientSecret) || $clientSecret === '') {
+            throw new ClaimRevAuthenticationException('ClaimRev client secret could not be decrypted');
+        }
+
+        $data = self::requestToken($authority, [
+            'client_id' => $clientId,
+            'scope' => $scope,
+            'client_secret' => $clientSecret,
+            'grant_type' => 'client_credentials',
+        ]);
+        return self::extractAccessToken($data);
+    }
+
+    /**
+     * ZITADEL JWT-bearer token, cached in the database until shortly before it
+     * expires (ZITADEL issues 12-hour tokens, so background services and page
+     * loads reuse one instead of each minting their own).
+     *
+     * @throws ClaimRevAuthenticationException if token acquisition fails
+     * @throws ModuleNotConfiguredException if required settings are missing
+     */
+    private static function acquireZitadelToken(GlobalConfig $globalsConfig): string
+    {
+        $cached = ZitadelKeyStore::getCachedToken();
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $authority = $globalsConfig->getZitadelAuthority();
+        $projectId = $globalsConfig->getZitadelProjectId();
+        $keyFile = ZitadelKeyStore::getKeyFile();
+
+        $data = self::requestToken(
+            ZitadelAuth::tokenEndpoint($authority),
+            ZitadelAuth::tokenRequestForm($keyFile, $authority, $projectId, time())
+        );
+        $token = self::extractAccessToken($data);
+
+        $expiresIn = $data['expires_in'] ?? 0;
+        if (is_int($expiresIn) && $expiresIn > 0) {
+            ZitadelKeyStore::saveToken($token, $expiresIn);
+        }
+        return $token;
+    }
+
+    /**
+     * POST a token request, retrying transient failures.
+     *
+     * @param array<string, string> $form
+     * @return array<string, mixed>
+     * @throws ClaimRevAuthenticationException if token acquisition fails
+     */
+    private static function requestToken(string $tokenUrl, #[SensitiveParameter] array $form): array
+    {
         $client = new Client([
             'connect_timeout' => self::HTTP_CONNECT_TIMEOUT,
             'timeout' => self::HTTP_TIMEOUT,
         ]);
-        $params = [
-            'form_params' => [
-                'client_id' => $clientId,
-                'scope' => $scope,
-                'client_secret' => $clientSecret,
-                'grant_type' => 'client_credentials',
-            ],
-        ];
+        $params = ['form_params' => $form];
 
-        // The B2C token endpoint occasionally returns transient TLS resets or
+        // Token endpoints occasionally return transient TLS resets or
         // 5xx responses, especially when the client side is on a Cloud Run
         // instance just waking up. Retry a couple of times with brief backoff
         // so the user-facing "Check Now" doesn't bubble those up as errors.
         $lastException = null;
         for ($attempt = 1; $attempt <= self::TOKEN_MAX_ATTEMPTS; $attempt++) {
             try {
-                $response = $client->request('POST', $authority, $params);
+                $response = $client->request('POST', $tokenUrl, $params);
                 break;
             } catch (GuzzleException $e) {
                 $lastException = $e;
@@ -167,7 +216,15 @@ readonly class ClaimRevApi
             );
         }
 
-        $data = self::parseResponse($response);
+        return self::parseResponse($response);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @throws ClaimRevAuthenticationException if the response has no access token
+     */
+    private static function extractAccessToken(array $data): string
+    {
         if (!isset($data['access_token']) || !is_string($data['access_token'])) {
             throw new ClaimRevAuthenticationException(
                 'ClaimRev token response missing access_token'

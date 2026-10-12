@@ -18,10 +18,12 @@ declare(strict_types=1);
     use OpenEMR\Common\Acl\AclMain;
     use OpenEMR\Common\Csrf\CsrfUtils;
     use OpenEMR\Core\Header;
+    use OpenEMR\Modules\ClaimRevConnector\ClaimRevApi;
     use OpenEMR\Modules\ClaimRevConnector\ClaimRevModuleSetup;
     use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
     use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
     use OpenEMR\Modules\ClaimRevConnector\TypeCoerce;
+    use OpenEMR\Modules\ClaimRevConnector\ZitadelKeyStore;
 
     $tab = "setup";
 
@@ -31,6 +33,7 @@ if (!AclMain::aclCheckCore('admin', 'manage_modules')) {
 }
 
 $actionMessage = '';
+$errorMessage = '';
 if (ModuleInput::isPostRequest()) {
     if (!CsrfHelper::verifyCsrfToken(ModuleInput::postString('csrf_token_form'), 'ClaimRevModule')) {
         CsrfUtils::csrfNotVerified();
@@ -50,6 +53,25 @@ if (ModuleInput::isPostRequest()) {
     if (ModuleInput::postExists('runMigrations')) {
         ClaimRevModuleSetup::runMigrations();
         $actionMessage = xlt("Upgrade complete. New tables and services have been applied.");
+    }
+    if (ModuleInput::postExists('saveZitadelKey')) {
+        try {
+            ZitadelKeyStore::saveKeyFile(ModuleInput::postString('zitadelKeyJson'));
+            // Prove the key end to end: token from ZITADEL, then an authenticated API call.
+            try {
+                ClaimRevApi::makeFromGlobals()->getDefaultAccount();
+                $actionMessage = xlt("ZITADEL key saved and the connection to ClaimRev was verified.");
+            } catch (\RuntimeException $e) {
+                $errorMessage = xlt("ZITADEL key saved, but the connection test failed. Check the Connectivity tab, or contact ClaimRev support.")
+                    . '<br><small>' . text($e->getMessage()) . '</small>';
+            }
+        } catch (\InvalidArgumentException $e) {
+            $errorMessage = xlt("The ZITADEL key was not saved.") . ' ' . text($e->getMessage());
+        }
+    }
+    if (ModuleInput::postExists('removeZitadelKey')) {
+        ZitadelKeyStore::removeKey();
+        $actionMessage = xlt("ZITADEL key removed. The module now uses the Client ID and Client Secret from Globals.");
     }
     if (ModuleInput::postExists('createPartner')) {
         $idNumber = ModuleInput::postString('partnerIdNumber');
@@ -80,10 +102,62 @@ $services = ClaimRevModuleSetup::getBackgroundServices();
                 </div>
             <?php } ?>
 
+            <?php if ($errorMessage != '') { ?>
+                <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+                    <?php echo $errorMessage; ?>
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+            <?php } ?>
+
             <h3 class="mt-3"><?php echo xlt("Setup"); ?></h3>
 
             <div class="row mt-3">
                 <div class="col-lg-6">
+                    <?php $zitadelKeyInfo = ZitadelKeyStore::getKeyInfo(); ?>
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0"><?php echo xlt("ClaimRev Sign-In Key (ZITADEL)"); ?></h6>
+                        </div>
+                        <div class="card-body">
+                            <?php if ($zitadelKeyInfo !== null) { ?>
+                                <p class="text-success mb-2"><i class="fa fa-check"></i> <?php echo xlt("A ZITADEL key is configured. The module signs in to ClaimRev with it, and the Client ID / Client Secret in Globals are not used."); ?></p>
+                                <ul class="small">
+                                    <li><?php echo xlt("Key ID"); ?>: <?php echo text($zitadelKeyInfo['keyId']); ?></li>
+                                    <li><?php echo xlt("Service User ID"); ?>: <?php echo text($zitadelKeyInfo['userId']); ?></li>
+                                    <li><?php echo xlt("Key Expires"); ?>: <?php echo text($zitadelKeyInfo['keyExpires'] !== '' ? $zitadelKeyInfo['keyExpires'] : xl('Never')); ?></li>
+                                    <li><?php echo xlt("Saved"); ?>: <?php echo text($zitadelKeyInfo['updatedAt']); ?></li>
+                                </ul>
+                                <form method="post" action="setup.php" class="d-inline" onsubmit="return confirm(<?php echo xlj("Remove the ZITADEL key? The module will go back to the Client ID and Client Secret in Globals."); ?>);">
+                                    <button type="submit" name="removeZitadelKey" class="btn btn-outline-danger btn-sm"><?php echo xlt("Remove Key"); ?></button>
+                                    <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfHelper::collectCsrfToken('ClaimRevModule')); ?>" />
+                                </form>
+                                <hr>
+                                <p class="small text-muted mb-2"><?php echo xlt("To replace the key (e.g. after rotating it in the ClaimRev Portal), load the new key file below."); ?></p>
+                            <?php } else { ?>
+                                <p><?php echo xlt("If ClaimRev gave you a key file (cr-…-key.json), load it here. Sites without one keep using the Client ID and Client Secret in Globals."); ?></p>
+                            <?php } ?>
+                            <form method="post" action="setup.php" autocomplete="off">
+                                <div class="form-group">
+                                    <input type="file" class="form-control-file mb-2" id="zitadelKeyFile" accept=".json,application/json" />
+                                    <textarea class="form-control text-monospace small" id="zitadelKeyJson" name="zitadelKeyJson" rows="4" spellcheck="false" placeholder="<?php echo xla("Choose the key file above, or paste its contents here"); ?>"></textarea>
+                                </div>
+                                <button type="submit" name="saveZitadelKey" class="btn btn-primary btn-sm"><?php echo xlt("Save Key and Test Connection"); ?></button>
+                                <input type="hidden" name="csrf_token_form" value="<?php echo attr(CsrfHelper::collectCsrfToken('ClaimRevModule')); ?>" />
+                            </form>
+                            <script>
+                                document.getElementById('zitadelKeyFile').addEventListener('change', function (e) {
+                                    var file = e.target.files[0];
+                                    if (!file) { return; }
+                                    var reader = new FileReader();
+                                    reader.onload = function () { document.getElementById('zitadelKeyJson').value = reader.result; };
+                                    reader.readAsText(file);
+                                });
+                            </script>
+                        </div>
+                    </div>
+
                     <div class="card mb-3">
                         <div class="card-header">
                             <h6 class="mb-0"><?php echo xlt("x12 Partner Record"); ?></h6>

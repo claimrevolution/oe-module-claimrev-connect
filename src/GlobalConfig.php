@@ -49,6 +49,8 @@ class GlobalConfig
     public const CONFIG_OPTION_DEV_API_URL = 'oe_claimrev_config_dev_api_url';
     public const CONFIG_OPTION_DEV_SCOPE = 'oe_claimrev_config_dev_scope';
     public const CONFIG_OPTION_DEV_AUTHORITY = 'oe_claimrev_config_dev_authority';
+    public const CONFIG_OPTION_DEV_ZITADEL_AUTHORITY = 'oe_claimrev_config_dev_zitadel_authority';
+    public const CONFIG_OPTION_DEV_ZITADEL_PROJECT = 'oe_claimrev_config_dev_zitadel_project';
     public const CONFIG_ENABLE_TEST_MODE = 'oe_claimrev_enable_test_mode';
     public const CONFIG_ENABLE_SWEEP = 'oe_claimrev_enable_sweep';
     public const CONFIG_SWEEP_DAYS = 'oe_claimrev_sweep_days';
@@ -71,21 +73,35 @@ class GlobalConfig
 
     /**
      * Returns true if all of the settings have been configured.  Otherwise it returns false.
+     *
+     * Credentials are either a ZITADEL key (Setup tab) or the B2C client ID + secret.
      */
     public function isConfigured(): bool
     {
-        $requiredKeys = [
-            self::CONFIG_OPTION_ENVIRONMENT,
-            self::CONFIG_OPTION_CLIENTID,
-            self::CONFIG_OPTION_CLIENTSECRET,
-        ];
-        foreach ($requiredKeys as $key) {
+        $environment = $this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT);
+        if ($environment === null || $environment === '') {
+            return false;
+        }
+        if ($this->usesZitadel()) {
+            return true;
+        }
+        foreach ([self::CONFIG_OPTION_CLIENTID, self::CONFIG_OPTION_CLIENTSECRET] as $key) {
             $value = $this->getGlobalSetting($key);
             if ($value === null || $value === '') {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * True when a ZITADEL key is stored. A stored key takes precedence over the
+     * B2C client ID / secret, so a site switches by adding the key and switches
+     * back by removing it.
+     */
+    public function usesZitadel(): bool
+    {
+        return ZitadelKeyStore::hasKey();
     }
 
     public function getClientId(): mixed
@@ -108,6 +124,15 @@ class GlobalConfig
             'P' => 'https://portalclaimrev.b2clogin.com/portalclaimrev.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token',
             'S' => 'https://stagingclaimrevcom.b2clogin.com/stagingclaimrevcom.onmicrosoft.com/B2C_1_sign-in-service/oauth2/v2.0/token',
         ],
+        // ZITADEL instance (issuer) and the ClaimRev API project whose id is the token audience.
+        'zitadel_authority' => [
+            'P' => 'https://auth.claimrev.com',
+            'S' => 'https://auth-staging.claimrev.com',
+        ],
+        'zitadel_project' => [
+            'P' => '394259562464542723',
+            'S' => '394262572515196931',
+        ],
         'api_server' => [
             'P' => 'https://api.claimrev.com',
             'S' => 'https://testapi.claimrev.com',
@@ -121,11 +146,13 @@ class GlobalConfig
     private const DEV_URL_CONFIG_KEYS = [
         'scope' => self::CONFIG_OPTION_DEV_SCOPE,
         'authority' => self::CONFIG_OPTION_DEV_AUTHORITY,
+        'zitadel_authority' => self::CONFIG_OPTION_DEV_ZITADEL_AUTHORITY,
+        'zitadel_project' => self::CONFIG_OPTION_DEV_ZITADEL_PROJECT,
         'api_server' => self::CONFIG_OPTION_DEV_API_URL,
     ];
 
     /**
-     * @param 'scope'|'authority'|'api_server'|'portal' $urlType
+     * @param 'scope'|'authority'|'zitadel_authority'|'zitadel_project'|'api_server'|'portal' $urlType
      * @return non-empty-string
      * @throws ModuleNotConfiguredException if URL is not configured for the current environment
      */
@@ -155,6 +182,18 @@ class GlobalConfig
     public function getClientAuthority(): string
     {
         return $this->getEnvironmentUrl('authority');
+    }
+
+    /** @return non-empty-string ZITADEL instance URL, e.g. https://auth.claimrev.com */
+    public function getZitadelAuthority(): string
+    {
+        return $this->getEnvironmentUrl('zitadel_authority');
+    }
+
+    /** @return non-empty-string ClaimRev API project id in ZITADEL */
+    public function getZitadelProjectId(): string
+    {
+        return $this->getEnvironmentUrl('zitadel_project');
     }
 
     /** @return non-empty-string */
@@ -218,7 +257,7 @@ class GlobalConfig
             ],
             self::CONFIG_OPTION_CLIENTSECRET => [
                 'title' => 'ClaimRev Client Secret',
-                'description' => 'Contact ClaimRev for this value',
+                'description' => 'Contact ClaimRev for this value. Not needed when a ZITADEL key file is configured on the module Setup tab.',
                 'type' => GlobalSetting::DATA_TYPE_ENCRYPTED,
                 'default' => '',
             ],
@@ -353,6 +392,18 @@ class GlobalConfig
             self::CONFIG_OPTION_DEV_AUTHORITY => [
                 'title' => 'OAuth Authority URL Override',
                 'description' => 'Auto-configured for production. Override when switching identity providers (e.g. Entra ID External, Zitadel).',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_OPTION_DEV_ZITADEL_AUTHORITY => [
+                'title' => 'ZITADEL Instance URL Override',
+                'description' => 'Environment D only. ZITADEL instance URL (issuer), e.g. https://auth-staging.claimrev.com. Used when a ZITADEL key is configured on the Setup tab.',
+                'type' => GlobalSetting::DATA_TYPE_TEXT,
+                'default' => '',
+            ],
+            self::CONFIG_OPTION_DEV_ZITADEL_PROJECT => [
+                'title' => 'ZITADEL API Project ID Override',
+                'description' => 'Environment D only. ZITADEL project id of the ClaimRev API (the token audience).',
                 'type' => GlobalSetting::DATA_TYPE_TEXT,
                 'default' => '',
             ],

@@ -20,6 +20,7 @@ use OpenEMR\Modules\ClaimRevConnector\Compat\KernelCompat;
 
 class ConnectivityInfo
 {
+    public string $identityProvider;
     public string $client_authority;
     public string $clientId;
     public string $client_scope;
@@ -33,12 +34,25 @@ class ConnectivityInfo
         $bootstrap = new Bootstrap(KernelCompat::resolve()->getEventDispatcher());
         $globalsConfig = $bootstrap->getGlobalConfig();
 
+        $usesZitadel = $globalsConfig->usesZitadel();
+        $this->identityProvider = $usesZitadel ? 'ZITADEL' : 'Azure B2C';
+
         $clientIdRaw = $globalsConfig->getClientId();
         $this->clientId = is_string($clientIdRaw) ? $clientIdRaw : '';
+        if ($usesZitadel) {
+            // The key file carries the service user's id, not its cr-… client name.
+            $keyInfo = ZitadelKeyStore::getKeyInfo();
+            $this->clientId = $keyInfo !== null ? 'service user ' . $keyInfo['userId'] . ', key ' . $keyInfo['keyId'] : '';
+        }
 
         try {
-            $this->client_authority = $globalsConfig->getClientAuthority();
-            $this->client_scope = $globalsConfig->getClientScope();
+            if ($usesZitadel) {
+                $this->client_authority = $globalsConfig->getZitadelAuthority();
+                $this->client_scope = 'urn:zitadel:iam:org:project:id:' . $globalsConfig->getZitadelProjectId() . ':aud';
+            } else {
+                $this->client_authority = $globalsConfig->getClientAuthority();
+                $this->client_scope = $globalsConfig->getClientScope();
+            }
             $this->api_server = $globalsConfig->getApiServer();
         } catch (ModuleNotConfiguredException) {
             $this->client_authority = '';
@@ -50,7 +64,7 @@ class ConnectivityInfo
             return;
         }
 
-        $clientSecret = $globalsConfig->getClientSecret();
+        $clientSecret = $usesZitadel ? '' : $globalsConfig->getClientSecret();
         $this->client_secret = is_string($clientSecret) ? $clientSecret : '';
 
         try {

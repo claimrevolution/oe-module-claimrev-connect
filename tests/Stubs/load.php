@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/support.php';
 require_once __DIR__ . '/OpenEMR/Core/OEGlobalsBag.php';
+require_once __DIR__ . '/OpenEMR/Common/Crypto/CryptoGen.php';
 require_once __DIR__ . '/OpenEMR/BC/ServiceContainer.php';
 require_once __DIR__ . '/OpenEMR/Common/Database/QueryUtils.php';
 require_once __DIR__ . '/OpenEMR/Billing/BillingProcessor/X12RemoteTracker.php';

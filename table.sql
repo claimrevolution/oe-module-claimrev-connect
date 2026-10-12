@@ -158,3 +158,17 @@ CREATE TABLE `mod_claimrev_version_check` (
     CONSTRAINT `chk_singleton` CHECK (`id` = 1)
 ) ENGINE=InnoDB;
 #EndIf
+
+#IfNotTable mod_claimrev_auth
+CREATE TABLE `mod_claimrev_auth` (
+    `id` TINYINT(1) PRIMARY KEY DEFAULT 1 COMMENT 'singleton row, always 1',
+    `zitadel_key` TEXT DEFAULT NULL COMMENT 'encrypted ZITADEL service-user JSON key file. When set, the module authenticates with ZITADEL instead of B2C',
+    `zitadel_key_id` VARCHAR(64) NOT NULL DEFAULT '',
+    `zitadel_user_id` VARCHAR(64) NOT NULL DEFAULT '',
+    `zitadel_key_expires` VARCHAR(40) NOT NULL DEFAULT '',
+    `access_token` TEXT DEFAULT NULL COMMENT 'encrypted cached ZITADEL access token',
+    `access_token_expires_at` DATETIME DEFAULT NULL,
+    `updated_at` DATETIME DEFAULT NULL,
+    CONSTRAINT `chk_auth_singleton` CHECK (`id` = 1)
+) ENGINE=InnoDB;
+#EndIf
