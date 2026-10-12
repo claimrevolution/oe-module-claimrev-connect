@@ -1,13 +1,44 @@
 # 2.2.0
-ZITADEL sign-in, alongside Azure B2C:
-- ClaimRev is moving its identity provider to ZITADEL. A ZITADEL client application has no client secret: it is a service user with a downloadable JSON key file (`cr-...-key.json`). The module now signs a short RS256 assertion with that key and exchanges it for an access token (JWT-bearer grant, RFC 7523) at `auth.claimrev.com` (`auth-staging.claimrev.com` for environment S), requesting the ClaimRev API project as the token audience. API calls then carry `x-auth-tenant: zitadel`, without which the API validates every bearer token as B2C.
-- The key file is loaded on the module's Setup tab (choose the file or paste it) and stored encrypted in a new `mod_claimrev_auth` table. It cannot be a Global setting: `globals.gl_value` is `varchar(255)` and an encrypted key is about 2 KB. Saving the key immediately requests a token and calls the API, so a bad key or a missing ClaimRev-side registration shows up on the spot.
-- A stored key takes precedence; without one the module uses the Client ID / Client Secret exactly as before. Sites switch over by loading a key and switch back by removing it, so B2C sites need no change.
-- ZITADEL tokens last 12 hours, so the module caches the token (encrypted, same table) and refreshes it 10 minutes before expiry, instead of requesting one per page load and per background-service run.
-- When signing in with the key fails, the module works out which environment the key belongs to. A key file does not name its instance, but only the issuing instance accepts it, so the other built-in instances are asked for a token. A test-portal key on a site set to P (the commonest setup mistake) now gets "This key belongs to the ClaimRev Staging environment (S), but ClaimRev Environment is set to Production (P)..." on both the Setup tab and the Connectivity tab, instead of a bare "Token: No".
-- The Connectivity tab now shows why sign-in or the account lookup failed. Previously a failure showed only "Token: No" and logged nothing.
-- The Connectivity tab shows which identity provider is in use. Environment D gains two overrides, ZITADEL Instance URL and ZITADEL API Project ID.
-- Existing installs pick up the new table with Setup -> Run Upgrade; saving a key also runs it. Until the table exists the module behaves exactly as 2.1.9.
+**ZITADEL sign-in, alongside Azure B2C.** ClaimRev is moving its identity provider to ZITADEL. This release lets a site sign in with a ZITADEL key file while every existing B2C site keeps working unchanged. Sites move over one at a time by loading a key, and can move back by removing it.
+
+## What changed
+- **New sign-in method.** A ZITADEL client application has no client secret. It is a service user with a downloadable JSON key file (`cr-...-key.json`). The module signs a short RS256 assertion with that key and exchanges it for an access token (JWT-bearer grant, RFC 7523) at `auth.claimrev.com`, or `auth-staging.claimrev.com` for environment S, asking for the ClaimRev API project as the token audience. API calls then carry `x-auth-tenant: zitadel`; without it the API validates every bearer token as B2C.
+- **Key file on the Setup tab.** The new "ClaimRev Sign-In Key (ZITADEL)" card takes the key file (choose it or paste it) and stores it encrypted in a new `mod_claimrev_auth` table. It cannot be a Global setting: `globals.gl_value` is `varchar(255)` and an encrypted key is about 2 KB. Saving the key immediately signs in and calls the API, so a bad key, the wrong environment or a missing ClaimRev-side setup shows up straight away. The card shows the key id, service user and expiry, never the key, and has a Remove Key button.
+- **A stored key takes precedence.** With a key the module uses ZITADEL. Without one it uses the Client ID / Client Secret from Globals exactly as before. The Client Secret is no longer required when a key is present.
+- **Token caching.** The access token is cached (encrypted, in the same table) and renewed 10 minutes before it expires, instead of being requested on every page load and every background-service run. ClaimRev sets the token lifetime, and the module follows whatever `expires_in` says.
+- **Wrong-environment detection.** A key file does not name its ZITADEL instance, but only the issuing instance accepts it. When sign-in fails, the module asks the other built-in instances for a token and says which environment the key belongs to, for example: "This key belongs to the ClaimRev Staging environment (S), but ClaimRev Environment is set to Production (P)...". This is the commonest setup mistake, a test-portal key on a production site or the reverse.
+- **Connectivity tab.** It now shows the identity provider in use, and why sign-in or the account lookup failed. Previously a failure showed only "Token: No" and logged nothing.
+- **Environment D** gains two overrides, ZITADEL Instance URL and ZITADEL API Project ID.
+
+## Upgrading
+1. Install 2.2.0 as usual (`composer update claimrevolution/oe-module-claimrev-connect`, or replace the module folder).
+2. Module **Setup** tab -> **Run Upgrade**. This creates `mod_claimrev_auth`; saving a key also runs it. Until the table exists the module behaves exactly as 2.1.9.
+3. Nothing else is needed for a site staying on B2C.
+
+## Switching a site to ZITADEL
+1. Create a client application for the account in the ClaimRev portal (production portal for P, test portal for S) and download its key file. It can be downloaded only once.
+2. Give the client application its roles in the portal. Without them the API accepts the token but answers 403 "Service Account not properly setup".
+3. **Administration -> Globals -> ClaimRev Connect**: check that ClaimRev Environment matches the portal the key came from (P or S).
+4. Module **Setup** tab: load the key file and click **Save Key and Test Connection**. Success reads "ZITADEL key saved and the connection to ClaimRev was verified."
+5. The **Connectivity** tab should show Identity Provider: ZITADEL, Token: Yes and the default account.
+
+## Troubleshooting
+- **"This key belongs to the ClaimRev ... environment"**: change ClaimRev Environment to the one named, or load a key from the other portal.
+- **403 "Service Account not properly setup"**: the client application has no roles, or was not registered for permissions. Assign its roles in the portal.
+- **Searches return a count but no rows**: this was a ClaimRev API bug for ZITADEL clients, fixed on the ClaimRev side. If it ever reappears, report it to ClaimRev support; the module is not at fault.
+- **One slow page load now and then**: a page that has to fetch a new token waits for ZITADEL, typically well under a second and occasionally a few seconds when ZITADEL is cold. Other loads use the cached token.
+
+## Tests
+- 101 tests, 193 assertions (up from 66):
+  - key-file parsing and validation, and that the signed assertion verifies against the key's public half
+  - the exact token request
+  - environment and override selection, and B2C sites staying configured as before
+  - the key store: missing table before Run Upgrade, per-request memo, encryption round trips, rejecting a bad paste before touching the database
+  - wrong-environment detection against mocked instances
+- New test stubs for `CryptoGen`, `ServiceContainer::getCrypto()` and `QueryUtils::existsTable()`.
+
+## Verified
+- Against ClaimRev staging and production, with real keys, on OpenEMR 8.4.1, 8.3.0 and 7.0.2.
 
 # 2.1.9
 Packaging only — no functional change from 2.1.8. **Install this rather than 2.1.8.**
