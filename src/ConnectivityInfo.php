@@ -28,6 +28,10 @@ class ConnectivityInfo
     public string $api_server;
     public bool $hasToken;
     public string $defaultAccount;
+    /** Why sign-in or the account lookup failed, for display; '' when it worked. */
+    public string $authError = '';
+    /** Set when the ZITADEL key belongs to a different environment than the configured one. */
+    public string $environmentHint = '';
 
     public function __construct()
     {
@@ -54,7 +58,8 @@ class ConnectivityInfo
                 $this->client_scope = $globalsConfig->getClientScope();
             }
             $this->api_server = $globalsConfig->getApiServer();
-        } catch (ModuleNotConfiguredException) {
+        } catch (ModuleNotConfiguredException $e) {
+            $this->authError = $e->getMessage();
             $this->client_authority = '';
             $this->client_scope = '';
             $this->api_server = '';
@@ -75,15 +80,21 @@ class ConnectivityInfo
             $this->defaultAccount = is_string($accountValue)
                 ? $accountValue
                 : json_encode($account, JSON_THROW_ON_ERROR);
-        } catch (ClaimRevAuthenticationException) {
+        } catch (ClaimRevAuthenticationException $e) {
             $this->hasToken = false;
             $this->defaultAccount = '';
-        } catch (ClaimRevApiException) {
+            $this->authError = $e->getMessage();
+            if ($usesZitadel) {
+                $this->environmentHint = ZitadelEnvironmentCheck::mismatchHint($globalsConfig) ?? '';
+            }
+        } catch (ClaimRevApiException $e) {
             $this->hasToken = true;
             $this->defaultAccount = '';
-        } catch (ModuleNotConfiguredException) {
+            $this->authError = $e->getMessage();
+        } catch (ModuleNotConfiguredException $e) {
             $this->hasToken = false;
             $this->defaultAccount = '';
+            $this->authError = $e->getMessage();
         }
     }
 }

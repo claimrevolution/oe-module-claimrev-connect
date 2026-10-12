@@ -4,6 +4,8 @@ ZITADEL sign-in, alongside Azure B2C:
 - The key file is loaded on the module's Setup tab (choose the file or paste it) and stored encrypted in a new `mod_claimrev_auth` table. It cannot be a Global setting: `globals.gl_value` is `varchar(255)` and an encrypted key is about 2 KB. Saving the key immediately requests a token and calls the API, so a bad key or a missing ClaimRev-side registration shows up on the spot.
 - A stored key takes precedence; without one the module uses the Client ID / Client Secret exactly as before. Sites switch over by loading a key and switch back by removing it, so B2C sites need no change.
 - ZITADEL tokens last 12 hours, so the module caches the token (encrypted, same table) and refreshes it 10 minutes before expiry, instead of requesting one per page load and per background-service run.
+- When signing in with the key fails, the module works out which environment the key belongs to. A key file does not name its instance, but only the issuing instance accepts it, so the other built-in instances are asked for a token. A test-portal key on a site set to P (the commonest setup mistake) now gets "This key belongs to the ClaimRev Staging environment (S), but ClaimRev Environment is set to Production (P)..." on both the Setup tab and the Connectivity tab, instead of a bare "Token: No".
+- The Connectivity tab now shows why sign-in or the account lookup failed. Previously a failure showed only "Token: No" and logged nothing.
 - The Connectivity tab shows which identity provider is in use. Environment D gains two overrides, ZITADEL Instance URL and ZITADEL API Project ID.
 - Existing installs pick up the new table with Setup -> Run Upgrade; saving a key also runs it. Until the table exists the module behaves exactly as 2.1.9.
 

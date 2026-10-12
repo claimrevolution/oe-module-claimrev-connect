@@ -74,6 +74,16 @@ $installedVersion = Bootstrap::MODULE_VERSION;
                         <li><?php echo xlt("Default Account");?>: <?php echo text($connectivityInfo->defaultAccount); ?></li>
                         <li><?php echo xlt("Token");?>: <?php echo $connectivityInfo->hasToken ? xlt("Yes") : xlt("No"); ?></li>
                     </ul>
+                    <?php if ($connectivityInfo->environmentHint !== '' || $connectivityInfo->authError !== '') { ?>
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <?php if ($connectivityInfo->environmentHint !== '') { ?>
+                                <p class="mb-2"><strong><?php echo text($connectivityInfo->environmentHint); ?></strong></p>
+                            <?php } ?>
+                            <?php if ($connectivityInfo->authError !== '') { ?>
+                                <small class="text-break"><?php echo text($connectivityInfo->authError); ?></small>
+                            <?php } ?>
+                        </div>
+                    <?php } ?>
                 </div>
             </div>
 

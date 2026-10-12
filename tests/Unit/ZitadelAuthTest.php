@@ -4,42 +4,17 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ClaimRevConnector\Tests\Unit;
 
+use OpenEMR\Modules\ClaimRevConnector\Tests\Support\TestKeys;
 use OpenEMR\Modules\ClaimRevConnector\ZitadelAuth;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ZitadelAuthTest extends TestCase
 {
-    private static string $privateKeyPem;
-    private static string $publicKeyPem;
-
-    public static function setUpBeforeClass(): void
-    {
-        $options = ['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA];
-        // Windows PHP builds (e.g. XAMPP) cannot generate keys without an explicit openssl.cnf.
-        $bundledConfig = dirname(PHP_BINARY) . '/extras/ssl/openssl.cnf';
-        if (getenv('OPENSSL_CONF') === false && is_file($bundledConfig)) {
-            $options['config'] = $bundledConfig;
-        }
-        $key = openssl_pkey_new($options);
-        self::assertNotFalse($key, 'openssl could not generate a test key: ' . openssl_error_string());
-        openssl_pkey_export($key, $pem, null, $options);
-        self::$privateKeyPem = $pem;
-        $details = openssl_pkey_get_details($key);
-        self::assertIsArray($details);
-        self::$publicKeyPem = $details['key'];
-    }
-
     /** @param array<string, mixed> $overrides */
     private function keyFileJson(array $overrides = []): string
     {
-        return json_encode(array_merge([
-            'type' => 'serviceaccount',
-            'keyId' => '111',
-            'key' => self::$privateKeyPem,
-            'expirationDate' => '2028-10-08T22:08:45Z',
-            'userId' => '222',
-        ], $overrides), JSON_THROW_ON_ERROR);
+        return TestKeys::keyFileJson($overrides);
     }
 
     /** @return array<string, mixed> */
@@ -57,7 +32,7 @@ final class ZitadelAuthTest extends TestCase
         self::assertSame('111', $key['keyId']);
         self::assertSame('222', $key['userId']);
         self::assertSame('2028-10-08T22:08:45Z', $key['expirationDate']);
-        self::assertSame(self::$privateKeyPem, $key['key']);
+        self::assertSame(TestKeys::privateKeyPem(), $key['key']);
     }
 
     public function testParseKeyFileAcceptsPrettyPrintedJsonWithSurroundingWhitespace(): void
@@ -129,7 +104,7 @@ final class ZitadelAuthTest extends TestCase
         ], self::decodeSegment($parts[1]));
 
         $signature = base64_decode(strtr($parts[2], '-_', '+/'));
-        self::assertSame(1, openssl_verify($parts[0] . '.' . $parts[1], $signature, self::$publicKeyPem, OPENSSL_ALGO_SHA256));
+        self::assertSame(1, openssl_verify($parts[0] . '.' . $parts[1], $signature, TestKeys::publicKeyPem(), OPENSSL_ALGO_SHA256));
     }
 
     public function testTokenRequestUsesTheJwtBearerGrantAndTheProjectAudienceScope(): void

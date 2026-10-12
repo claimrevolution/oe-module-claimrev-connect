@@ -13,6 +13,7 @@ use OpenEMR\Common\Crypto\CryptoGen;
 use OpenEMR\Modules\ClaimRevConnector\ClaimRevAuthenticationException;
 use OpenEMR\Modules\ClaimRevConnector\GlobalConfig;
 use OpenEMR\Modules\ClaimRevConnector\ModuleNotConfiguredException;
+use OpenEMR\Modules\ClaimRevConnector\Tests\Support\TestKeys;
 use OpenEMR\Modules\ClaimRevConnector\ZitadelKeyStore;
 use PHPUnit\Framework\TestCase;
 
@@ -33,19 +34,6 @@ final class ZitadelConfigTest extends TestCase
     private static function encrypt(string $plain): string
     {
         return (new CryptoGen())->encryptStandard($plain);
-    }
-
-    private static function keyFileJson(): string
-    {
-        $options = ['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA];
-        $bundledConfig = dirname(PHP_BINARY) . '/extras/ssl/openssl.cnf';
-        if (getenv('OPENSSL_CONF') === false && is_file($bundledConfig)) {
-            $options['config'] = $bundledConfig;
-        }
-        $key = openssl_pkey_new($options);
-        self::assertNotFalse($key);
-        openssl_pkey_export($key, $pem, null, $options);
-        return json_encode(['type' => 'serviceaccount', 'keyId' => '1', 'key' => $pem, 'userId' => '2'], JSON_THROW_ON_ERROR);
     }
 
     // --- GlobalConfig ---------------------------------------------------
@@ -173,7 +161,7 @@ final class ZitadelConfigTest extends TestCase
 
     public function testStoredKeyFileIsDecryptedAndValidated(): void
     {
-        \ClaimRevStubState::$queryResults[] = self::encrypt(self::keyFileJson());
+        \ClaimRevStubState::$queryResults[] = self::encrypt(TestKeys::keyFileJson(['keyId' => '1', 'userId' => '2']));
 
         $key = ZitadelKeyStore::getKeyFile();
 

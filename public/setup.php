@@ -19,10 +19,13 @@ declare(strict_types=1);
     use OpenEMR\Common\Csrf\CsrfUtils;
     use OpenEMR\Core\Header;
     use OpenEMR\Modules\ClaimRevConnector\ClaimRevApi;
+    use OpenEMR\Modules\ClaimRevConnector\ClaimRevAuthenticationException;
     use OpenEMR\Modules\ClaimRevConnector\ClaimRevModuleSetup;
     use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
+    use OpenEMR\Modules\ClaimRevConnector\GlobalConfig;
     use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
     use OpenEMR\Modules\ClaimRevConnector\TypeCoerce;
+    use OpenEMR\Modules\ClaimRevConnector\ZitadelEnvironmentCheck;
     use OpenEMR\Modules\ClaimRevConnector\ZitadelKeyStore;
 
     $tab = "setup";
@@ -61,6 +64,13 @@ if (ModuleInput::isPostRequest()) {
             try {
                 ClaimRevApi::makeFromGlobals()->getDefaultAccount();
                 $actionMessage = xlt("ZITADEL key saved and the connection to ClaimRev was verified.");
+            } catch (ClaimRevAuthenticationException $e) {
+                /** @var array<string, mixed> $globalsForHint */
+                $globalsForHint = $GLOBALS;
+                $hint = ZitadelEnvironmentCheck::mismatchHint(new GlobalConfig($globalsForHint));
+                $errorMessage = xlt("ZITADEL key saved, but signing in to ClaimRev with it failed.")
+                    . ($hint !== null ? '<br><strong>' . text($hint) . '</strong>' : '')
+                    . '<br><small>' . text($e->getMessage()) . '</small>';
             } catch (\RuntimeException $e) {
                 $errorMessage = xlt("ZITADEL key saved, but the connection test failed. Check the Connectivity tab, or contact ClaimRev support.")
                     . '<br><small>' . text($e->getMessage()) . '</small>';

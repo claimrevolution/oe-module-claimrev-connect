@@ -158,8 +158,7 @@ class GlobalConfig
      */
     private function getEnvironmentUrl(string $urlType): string
     {
-        $env = $this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT);
-        $env = is_string($env) ? $env : 'P';
+        $env = $this->getEnvironment();
 
         $url = ($env === 'D' && isset(self::DEV_URL_CONFIG_KEYS[$urlType]))
             ? $this->getGlobalSetting(self::DEV_URL_CONFIG_KEYS[$urlType])
@@ -182,6 +181,31 @@ class GlobalConfig
     public function getClientAuthority(): string
     {
         return $this->getEnvironmentUrl('authority');
+    }
+
+    /** The ClaimRev Environment setting: P (production, the default), S (staging) or D (custom URLs). */
+    public function getEnvironment(): string
+    {
+        $env = $this->getGlobalSetting(self::CONFIG_OPTION_ENVIRONMENT);
+        return is_string($env) ? $env : 'P';
+    }
+
+    /**
+     * The built-in environments' ZITADEL instances, for working out which one
+     * issued a key (the key file itself does not say).
+     *
+     * @return array<string, array{authority: string, projectId: string}>
+     */
+    public static function builtInZitadelInstances(): array
+    {
+        $instances = [];
+        foreach (self::URL_CONFIGS['zitadel_authority'] as $env => $authority) {
+            $instances[$env] = [
+                'authority' => $authority,
+                'projectId' => self::URL_CONFIGS['zitadel_project'][$env],
+            ];
+        }
+        return $instances;
     }
 
     /** @return non-empty-string ZITADEL instance URL, e.g. https://auth.claimrev.com */
