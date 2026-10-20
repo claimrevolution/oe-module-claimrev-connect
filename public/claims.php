@@ -116,6 +116,7 @@ $searchFilters = [
             .status-icon.text-accepted { color: #28a745; }
             .status-icon.text-rejected { color: #dc3545; }
             .status-icon.text-pending { color: #6c757d; }
+            .status-icon.text-voided { color: #adb5bd; }
             .status-icon.text-warning { color: #ff9800; }
             .status-icon.text-processing { color: #ffc107; }
             .status-icon.text-payer-pending { color: #9c27b0; }
@@ -354,7 +355,11 @@ $searchFilters = [
                         } elseif (in_array($statusId, [16, 17])) {
                             $claimIcon = 'fa-ban';
                             $claimIconClass = 'text-rejected';
-                        } elseif (in_array($statusId, [7, 8, 9, 18])) {
+                        } elseif ($statusId === 18) {
+                            // Voided: replaced or withdrawn, no longer in play.
+                            $claimIcon = 'fa-minus-circle';
+                            $claimIconClass = 'text-voided';
+                        } elseif (in_array($statusId, [7, 8, 9])) {
                             $claimIcon = 'fa-paper-plane';
                             $claimIconClass = 'text-accepted';
                         } else {
@@ -637,9 +642,13 @@ $searchFilters = [
                                         </div>
                                     </div>
                                 </div>
-                                <?php if ($errorCount > 0) { ?>
+                                <?php
+                                // errorCount covers only ClaimRev's own edit errors. A payer (277CA)
+                                // rejection leaves it at 0 while GetClaimErrors still returns the
+                                // payer's errors, so a payer-rejected claim must load them too.
+                                if (($errorCount > 0 || $payerAcceptanceStatusId === 3) && $objectId !== '') { ?>
                                     <div class="mt-3 claim-errors-section" data-claimid="<?php echo attr($objectId); ?>" data-loaded="0">
-                                        <div class="detail-label"><?php echo xlt("Errors"); ?> (<?php echo text((string) $errorCount); ?>)</div>
+                                        <div class="detail-label"><?php echo xlt("Errors"); ?><?php echo $errorCount > 0 ? ' (' . text((string) $errorCount) . ')' : ''; ?></div>
                                         <div class="claim-errors-content">
                                             <span class="text-muted small"><i class="fa fa-spinner fa-spin"></i> <?php echo xlt("Loading errors..."); ?></span>
                                         </div>
@@ -738,8 +747,12 @@ $searchFilters = [
                                 if (response.success && response.errors && response.errors.length > 0) {
                                     var html = '<ul class="mb-0 small">';
                                     response.errors.forEach(function(err) {
-                                        html += '<li class="text-danger">';
+                                        html += '<li class="text-danger"' + (err.errorMessageCategory ? ' title="' + $('<span>').text(err.errorMessageCategory).html().replace(/"/g, '&quot;') + '"' : '') + '>';
                                         html += $('<span>').text(err.errorMessage || '').html();
+                                        if (err.claimStatusCode) {
+                                            // Payer (277CA) errors carry the STC category-status-entity code.
+                                            html += ' <span class="text-muted">(' + $('<span>').text(<?php echo xlj("Payer code"); ?> + ': ' + err.claimStatusCode).html() + ')</span>';
+                                        }
                                         if (err.segment) {
                                             html += ' <span class="text-muted">(' + $('<span>').text('Segment: ' + err.segment).html();
                                             if (err.loopId) {

@@ -98,6 +98,59 @@ class PaymentAdvicePostingService
     }
 
     /**
+     * The ar_session.pay_total for one posted payment advice: what this claim's
+     * lines pay, which is what the session's ar_activity rows add up to.
+     *
+     * Each advice gets its own session (that is what the idempotency reference
+     * keys on), so the check total from the 835 must not be used here: a
+     * three-claim check would otherwise be recorded three times over. Core's
+     * own ERA posting holds pay_total equal to the sum of the session's
+     * payments and flags a mismatch as "Total Distribution ... is not full".
+     * A reversal pays negative, so its session total is negative too.
+     *
+     * @param list<array{paid: float}> $serviceLines preview() service lines
+     */
+    public static function sessionPayTotal(array $serviceLines): float
+    {
+        $total = 0.0;
+        foreach ($serviceLines as $svc) {
+            $total += $svc['paid'];
+        }
+        return round($total, 2);
+    }
+
+    /**
+     * The form_encounter.last_level_closed value after posting an advice.
+     *
+     * A payment (any status but 22) closes its insurance level, as before. A
+     * reversal (claim status 22) closes it only while a payment still stands
+     * for that level: if every payment posted for it has now been reversed,
+     * the level goes back to open (payerType - 1). Otherwise the encounter
+     * stays closed with the whole balance on it, and OpenEMR treats a balance
+     * after insurance closes as the patient's — a reversed claim would be
+     * billed to the patient in full.
+     *
+     * Counting postings rather than looking at the order of events covers a
+     * correction (reversal + repayment) whichever half is posted first.
+     *
+     * @param int $paymentsPosted  ERA payments posted for this encounter and
+     *                             level, including this one if it is a payment
+     * @param int $reversalsPosted ERA reversals posted for this encounter and
+     *                             level, including this one if it is a reversal
+     */
+    public static function closedLevelAfterPosting(
+        string $claimStatusCode,
+        int $payerType,
+        int $paymentsPosted,
+        int $reversalsPosted
+    ): int {
+        if ($claimStatusCode !== '22') {
+            return $payerType;
+        }
+        return $paymentsPosted > $reversalsPosted ? $payerType : $payerType - 1;
+    }
+
+    /**
      * Sum charged / paid / adjusted amounts across an 835 service lines
      * payload. Pure: no DB, no network, no globals.
      *
@@ -187,7 +240,39 @@ class PaymentAdvicePostingService
             }
         }
 
+        // Check 3: a denial recorded from this advice. A denial posts no
+        // ar_session, so checks 1 and 2 never see it; without this, every
+        // "Post All" recorded the same denial again (another denied claim
+        // version and timeline event). Its timeline entry carries the
+        // reference — see denialDetailText(). Denials recorded before that
+        // carry none, so each can be recorded once more after an upgrade.
+        if ($pid > 0 && $encounter > 0) {
+            $denials = QueryUtils::fetchSingleValue(
+                "SELECT COUNT(*) AS cnt FROM mod_claimrev_claim_events " .
+                "WHERE pid = ? AND encounter = ? AND detail_text LIKE ? AND event_type = ? AND source = ?",
+                'cnt',
+                [$pid, $encounter, '%' . $reference . '%', ClaimTrackingService::EVENT_DENIED, ClaimTrackingService::SOURCE_ERA]
+            );
+
+            if (TypeCoerce::asInt($denials) > 0) {
+                return [
+                    'posted' => true,
+                    'session_id' => null,
+                    'details' => 'Denial already recorded from this payment advice',
+                ];
+            }
+        }
+
         return ['posted' => false, 'session_id' => null, 'details' => ''];
+    }
+
+    /**
+     * Timeline detail for a denial recorded from an ERA: the adjustment codes,
+     * then the idempotency reference that isAlreadyPosted() looks for.
+     */
+    public static function denialDetailText(string $codeValue, string $reference): string
+    {
+        return $codeValue . ' [' . $reference . ']';
     }
 
     /**
@@ -328,7 +413,6 @@ class PaymentAdvicePostingService
 
         $result['checkNumber'] = TypeCoerce::asString($checkInfo['checkNumber'] ?? '');
         $result['checkDate'] = substr(TypeCoerce::asString($checkInfo['checkDate'] ?? ''), 0, 10);
-        $result['totalPaid'] = TypeCoerce::asFloat($checkInfo['totalActualProviderPaymentAmt'] ?? 0);
 
         // Parse patient control number
         $pcn = TypeCoerce::asString($paymentInfo['patientControlNumber'] ?? '');
@@ -477,6 +561,10 @@ class PaymentAdvicePostingService
             $result['totalAdjusted'] += $totalAdj;
         }
 
+        // This claim's paid amount, matching the total posted. (It used to be
+        // the 835's check total, which covers every claim on the check.)
+        $result['totalPaid'] = self::sessionPayTotal($result['serviceLines']);
+
         // No code path between the early-return errors above and here adds
         // to \$result['errors'], but keep this assignment as an explicit
         // contract guard rather than hard-coding canPost = true.
@@ -583,7 +671,8 @@ class PaymentAdvicePostingService
 
         $checkNumber = TypeCoerce::asString($checkInfo['checkNumber'] ?? '');
         $checkDate = $preview['checkDate'] !== '' ? $preview['checkDate'] : date('Y-m-d');
-        $payTotal = TypeCoerce::asFloat($checkInfo['totalActualProviderPaymentAmt'] ?? 0);
+        // This claim's paid amount, not the check total — see sessionPayTotal().
+        $payTotal = self::sessionPayTotal($preview['serviceLines']);
         $reference = self::buildIdempotencyReference($paymentAdviceId);
         $memo = 'Chk#' . ($checkNumber !== '' ? $checkNumber : 'N/A') . ' ' . $pid . '-' . $encounter;
 
@@ -620,7 +709,7 @@ class PaymentAdvicePostingService
                 ClaimTrackingService::SOURCE_ERA,
                 statusCode: '4',
                 statusDescription: 'Denial recorded from ERA',
-                detailText: $codeValue,
+                detailText: self::denialDetailText($codeValue, $reference),
             );
 
             // Mark as worked on the ClaimRev side
@@ -733,17 +822,9 @@ class PaymentAdvicePostingService
             }
         }
 
-        // Update claim level and check for secondary
-        $levelDone = $payerType;
-        QueryUtils::sqlStatementThrowException(
-            "UPDATE form_encounter SET last_level_closed = ? WHERE pid = ? AND encounter = ?",
-            [$levelDone, $pid, $encounter]
-        );
-
-        // Mark claim as Processed (status 3) in OpenEMR
-        BillingUtilities::updateClaim(false, $pid, $encounter, -1, -1, 3);
-
-        // Log to claim tracking
+        // Log to claim tracking. Logged before the level is worked out below,
+        // because that decision counts the ERA postings for this encounter,
+        // this one included.
         ClaimTrackingService::logEvent(
             $pid,
             $encounter,
@@ -759,8 +840,35 @@ class PaymentAdvicePostingService
         // \$sessionId is guaranteed > 0 here (we returned earlier if it was 0)
         ClaimTrackingService::linkPaymentSession($pid, $encounter, $payerType, $sessionId);
 
-        // If primary and secondary insurance exists, re-queue for secondary billing
-        if ($primary && SLEOB::arGetPayerID($pid, $serviceDate, 2)) {
+        // Update claim level. A reversal that leaves no payment standing
+        // re-opens the level so the balance stays with the payer.
+        $isReversal = ($csc === '22');
+        $counts = QueryUtils::querySingleRow(
+            "SELECT COALESCE(SUM(status_code <> '22'), 0) AS payments, COALESCE(SUM(status_code = '22'), 0) AS reversals " .
+            "FROM mod_claimrev_claim_events " .
+            "WHERE pid = ? AND encounter = ? AND payer_type = ? AND event_type = ? AND source = ?",
+            [$pid, $encounter, $payerType, ClaimTrackingService::EVENT_PAYMENT_POSTED, ClaimTrackingService::SOURCE_ERA]
+        );
+        $levelDone = self::closedLevelAfterPosting(
+            $csc,
+            $payerType,
+            TypeCoerce::asInt($counts['payments'] ?? 0),
+            TypeCoerce::asInt($counts['reversals'] ?? 0),
+        );
+        $reopened = $levelDone < $payerType;
+        QueryUtils::sqlStatementThrowException(
+            "UPDATE form_encounter SET last_level_closed = ? WHERE pid = ? AND encounter = ?",
+            [$levelDone, $pid, $encounter]
+        );
+
+        // Mark claim as Processed (status 3), or back to Billed (status 2)
+        // when a reversal handed it back to the payer.
+        BillingUtilities::updateClaim(false, $pid, $encounter, -1, -1, $reopened ? 2 : 3);
+
+        // If primary was paid and secondary insurance exists, re-queue for
+        // secondary billing. Never on a reversal: money was taken back, there
+        // is nothing new to forward.
+        if ($primary && !$isReversal && SLEOB::arGetPayerID($pid, $serviceDate, 2)) {
             SLEOB::arSetupSecondary($pid, $encounter, false, 0);
         }
 

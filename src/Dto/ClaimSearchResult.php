@@ -32,7 +32,7 @@ final readonly class ClaimSearchResult
         public ?string $eraClassification = null,
         public ?string $patientControlNumber = null,
         public ?bool $isWorked = null,
-        public ?int $objectId = null,
+        public ?string $objectId = null,
         public ?int $claimTypeId = null,
         public ?string $claimType = null,
         public ?int $errorCount = null,
@@ -79,9 +79,9 @@ final readonly class ClaimSearchResult
             paymentAdviceStatusId: self::asInt($arr, 'paymentAdviceStatusId'),
             paymentAdviceStatusName: self::asString($arr, 'paymentAdviceStatusName'),
             eraClassification: self::asString($arr, 'eraClassification'),
-            patientControlNumber: self::asString($arr, 'patientControlNumber'),
+            patientControlNumber: self::patientControlNumberOf($arr),
             isWorked: self::asBool($arr, 'isWorked'),
-            objectId: self::asInt($arr, 'objectId'),
+            objectId: self::asString($arr, 'objectId'),
             claimTypeId: self::asInt($arr, 'claimTypeId'),
             claimType: self::asString($arr, 'claimType'),
             errorCount: self::asInt($arr, 'errorCount'),
@@ -102,6 +102,22 @@ final readonly class ClaimSearchResult
             memberNumber: self::asString($arr, 'memberNumber'),
             traceNumber: self::asString($arr, 'traceNumber'),
         );
+    }
+
+    /**
+     * The claim's patient control number (CLM01, "pid-encounter") from a raw
+     * claim-search result.
+     *
+     * ClaimRev's claim view returns it as `patientAccountNumber`; there is no
+     * `patientControlNumber` field on a claim result. `patientControlNumber` is
+     * still honoured first in case a response ever carries it.
+     *
+     * @param array<int|string, mixed> $arr
+     */
+    public static function patientControlNumberOf(array $arr): ?string
+    {
+        $pcn = self::asString($arr, 'patientControlNumber');
+        return $pcn !== null && $pcn !== '' ? $pcn : self::asString($arr, 'patientAccountNumber');
     }
 
     /**

@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ClaimRevConnector;
 
 use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Modules\ClaimRevConnector\Dto\ClaimSearchResult;
 
 /**
  * @phpstan-type ClaimWorkRow array{
@@ -591,7 +592,7 @@ class ClaimTrackingService
      */
     public static function syncFromClaimRev(array $crClaimData): array
     {
-        $pcn = TypeCoerce::asString($crClaimData['patientControlNumber'] ?? '');
+        $pcn = TypeCoerce::asString(ClaimSearchResult::patientControlNumberOf($crClaimData));
         $parsed = self::parsePcn($pcn);
         if ($parsed === null) {
             return ['success' => false, 'message' => 'Invalid patient control number: ' . $pcn];
@@ -679,7 +680,7 @@ class ClaimTrackingService
             if (!is_array($cr)) {
                 continue;
             }
-            $crPcn = TypeCoerce::asString($cr['patientControlNumber'] ?? '');
+            $crPcn = TypeCoerce::asString(ClaimSearchResult::patientControlNumberOf($cr));
             if ($crPcn !== '') {
                 /** @var array<string, mixed> $cr */
                 $crMap[$crPcn] = $cr;

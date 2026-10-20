@@ -27,6 +27,7 @@ use OpenEMR\Modules\ClaimRevConnector\ClaimStatusSyncService;
 use OpenEMR\Modules\ClaimRevConnector\CsrfHelper;
 use OpenEMR\Modules\ClaimRevConnector\ModuleInput;
 use OpenEMR\Modules\ClaimRevConnector\TypeCoerce;
+use OpenEMR\Modules\ClaimRevConnector\Dto\ClaimSearchResult;
 
 header('Content-Type: application/json');
 
@@ -67,7 +68,7 @@ if ($claim === null) {
 }
 
 $claimData = [
-    'patientControlNumber' => TypeCoerce::asString($claim['patientControlNumber'] ?? ''),
+    'patientControlNumber' => TypeCoerce::asString(ClaimSearchResult::patientControlNumberOf($claim)),
     'statusId' => TypeCoerce::asInt($claim['statusId'] ?? 0),
     'statusName' => TypeCoerce::asString($claim['statusName'] ?? ''),
     'payerAcceptanceStatusId' => TypeCoerce::asInt($claim['payerAcceptanceStatusId'] ?? 0),

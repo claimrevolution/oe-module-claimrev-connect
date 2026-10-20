@@ -84,4 +84,97 @@ final class PaymentAdvicePostingServiceTest extends TestCase
             );
         }
     }
+
+    // --- isAlreadyPosted(): denials ------------------------------------------
+
+    public function testARecordedDenialCountsAsAlreadyPosted(): void
+    {
+        // A denial creates no ar_session, so the session checks find nothing;
+        // the denial's own timeline entry must stop it being recorded again.
+        \ClaimRevStubState::reset();
+        \ClaimRevStubState::$queryResults = [null, 0, 1];
+
+        $result = PaymentAdvicePostingService::isAlreadyPosted('6ad7da42f93bf10f4c289942', 9103, 629321043);
+
+        self::assertTrue($result['posted']);
+        self::assertNull($result['session_id']);
+        self::assertStringContainsString('Denial', $result['details']);
+        $denialQuery = end(\ClaimRevStubState::$queries);
+        self::assertIsArray($denialQuery);
+        self::assertSame(
+            [9103, 629321043, '%' . PaymentAdvicePostingService::buildIdempotencyReference('6ad7da42f93bf10f4c289942') . '%'],
+            array_slice($denialQuery['binds'], 0, 3),
+        );
+    }
+
+    public function testNothingRecordedMeansNotPosted(): void
+    {
+        \ClaimRevStubState::reset();
+        \ClaimRevStubState::$queryResults = [null, 0, 0];
+
+        self::assertFalse(PaymentAdvicePostingService::isAlreadyPosted('abc', 9103, 629321043)['posted']);
+    }
+
+    public function testDenialTimelineDetailCarriesTheIdempotencyReference(): void
+    {
+        $detail = PaymentAdvicePostingService::denialDetailText('99214__CO_50,36415__CO_50', 'ClaimRev-abc');
+
+        self::assertStringContainsString('99214__CO_50,36415__CO_50', $detail);
+        self::assertStringContainsString('ClaimRev-abc', $detail);
+    }
+
+    // --- sessionPayTotal() --------------------------------------------------
+
+    public function testSessionPayTotalIsThisClaimsPaidAmountNotTheCheckTotal(): void
+    {
+        // One claim off a three-claim check: the session must carry 128.64,
+        // not the 385.92 check total, or every claim's session repeats the check.
+        self::assertSame(128.64, PaymentAdvicePostingService::sessionPayTotal([
+            ['paid' => 119.04],
+            ['paid' => 9.60],
+        ]));
+    }
+
+    public function testSessionPayTotalForAReversalIsNegative(): void
+    {
+        self::assertSame(-128.64, PaymentAdvicePostingService::sessionPayTotal([
+            ['paid' => -119.04],
+            ['paid' => -9.60],
+        ]));
+    }
+
+    public function testSessionPayTotalIsRoundedToCents(): void
+    {
+        self::assertSame(0.3, PaymentAdvicePostingService::sessionPayTotal([
+            ['paid' => 0.1],
+            ['paid' => 0.2],
+        ]));
+    }
+
+    // --- closedLevelAfterPosting() -------------------------------------------
+
+    public function testAPaymentClosesItsInsuranceLevel(): void
+    {
+        self::assertSame(1, PaymentAdvicePostingService::closedLevelAfterPosting('1', 1, 1, 0));
+        self::assertSame(2, PaymentAdvicePostingService::closedLevelAfterPosting('2', 2, 1, 0));
+    }
+
+    public function testAReversalWithNothingLeftStandingReopensTheLevel(): void
+    {
+        // TESTREVERSAL: one payment, then its reversal. The payer owes the
+        // claim again, so the balance must not fall to the patient.
+        self::assertSame(0, PaymentAdvicePostingService::closedLevelAfterPosting('22', 1, 1, 1));
+    }
+
+    public function testAReversalPostedAfterItsCorrectionKeepsTheLevelClosed(): void
+    {
+        // TESTCORRECTION, repayment posted before the reversal: two payments,
+        // one reversal, so a payment still stands.
+        self::assertSame(1, PaymentAdvicePostingService::closedLevelAfterPosting('22', 1, 2, 1));
+    }
+
+    public function testAReversalOnSecondaryReopensOnlyTheSecondaryLevel(): void
+    {
+        self::assertSame(1, PaymentAdvicePostingService::closedLevelAfterPosting('22', 2, 1, 1));
+    }
 }

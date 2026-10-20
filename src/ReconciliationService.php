@@ -19,6 +19,7 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ClaimRevConnector;
 
 use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Modules\ClaimRevConnector\Dto\ClaimSearchResult;
 
 /**
  * @phpstan-type ReconcileRow array{
@@ -202,7 +203,7 @@ class ReconciliationService
             $crResults = self::lookupClaimRev($pcns);
 
             foreach ($crResults as $crClaim) {
-                $crPcn = TypeCoerce::asString($crClaim['patientControlNumber'] ?? '');
+                $crPcn = TypeCoerce::asString(ClaimSearchResult::patientControlNumberOf($crClaim));
                 if ($crPcn === '' || !isset($pcnMap[$crPcn])) {
                     continue;
                 }

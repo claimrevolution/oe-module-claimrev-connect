@@ -14,6 +14,7 @@
 
 declare(strict_types=1);
 
+use OpenEMR\Modules\ClaimRevConnector\PrimaryCareProvider;
 use OpenEMR\Modules\ClaimRevConnector\PrintProperty;
 
 if (property_exists($eligibilityData, 'payerInfo') && is_object($eligibilityData->payerInfo)) {
@@ -27,6 +28,12 @@ if (property_exists($eligibilityData, 'status')) {
     } else {
         PrintProperty::displayProperty("Coverage Status:", $eligibilityData->status, "", "", "color:red");
     }
+}
+foreach (PrimaryCareProvider::fromEligibility($eligibilityData) as $pcp) {
+    PrintProperty::displayProperty("Primary Care Provider:", $pcp['name']);
+    PrintProperty::displayProperty("PCP NPI:", $pcp['npi']);
+    PrintProperty::displayProperty("PCP Address:", $pcp['address']);
+    PrintProperty::displayProperty("PCP Phone:", $pcp['phone']);
 }
 if (property_exists($eligibilityData, 'hierarchy')) {
     PrintProperty::displayProperty("Hierarchy:", $eligibilityData->hierarchy);

@@ -233,8 +233,9 @@ $totalPages = ($totalRecords > 0) ? (int) ceil($totalRecords / $pageSize) : 0;
                     <button type="button" class="btn btn-sm btn-outline-success" id="batchPostSelectedBtn" onclick="batchPostSelected()" style="display:none;">
                         <i class="fa fa-check-square"></i> <?php echo xlt("Post Selected"); ?> (<span id="selectedCount">0</span>)
                     </button>
-                    <button type="button" class="btn btn-sm btn-success" id="batchPostBtn" onclick="batchPostAll()">
-                        <i class="fa fa-upload"></i> <?php echo xlt("Batch Post All Paid"); ?>
+                    <button type="button" class="btn btn-sm btn-success" id="batchPostBtn" onclick="batchPostAll()"
+                        title="<?php echo xla("Posts every unposted payment advice on this page, including denials. Reversals and pended claims are held back for individual approval. Tick rows to post only those instead."); ?>">
+                        <i class="fa fa-upload"></i> <?php echo xlt("Post All on This Page"); ?>
                     </button>
                     <?php if ($totalPages > 1) { ?>
                         <?php if ($pageIndex > 0) { ?>
@@ -1054,12 +1055,17 @@ $totalPages = ($totalRecords > 0) ? (int) ceil($totalRecords / $pageSize) : 0;
             function updateSelectedCount() {
                 var checked = document.querySelectorAll('.post-checkbox:checked');
                 var btn = document.getElementById('batchPostSelectedBtn');
+                var allBtn = document.getElementById('batchPostBtn');
                 var countEl = document.getElementById('selectedCount');
+                // While rows are ticked, only the selection can be posted, so a
+                // half-made selection can't be bypassed by posting the whole page.
                 if (checked.length > 0) {
                     btn.style.display = '';
+                    allBtn.style.display = 'none';
                     countEl.textContent = checked.length;
                 } else {
                     btn.style.display = 'none';
+                    allBtn.style.display = '';
                 }
             }
 
