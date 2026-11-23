@@ -15,13 +15,14 @@ payer.
 |---|---|
 | `demo-reset.sql` | Clears the last run and creates nine fresh, unbilled encounters. Prints a readiness report. Safe to run any time. |
 | `demo-status.sql` | Read-only report: claim status, money, balance and timeline per patient. Run after any step. |
+| `demo-eligibility-patient.sql` | Creates Fred Flintstone (pid 9110) on the test payer, subscriber ID PCP01, for the eligibility and Revenue Tools demo. Run `demo-reset.sql` once first (it creates insurer 210). Resets leave pid 9110 alone; re-running this file clears his eligibility history. |
 
-On the test VM (oe8 is `mysql803` / `openemr803`):
+On the test VM (oe8 is `mysql850` / `openemr850`):
 
 ```
 gcloud compute scp tools/demo-reset.sql tools/demo-status.sql openemr-test:/tmp/ --zone us-central1-a --project claimrev-development --tunnel-through-iap
-gcloud compute ssh openemr-test --zone us-central1-a --project claimrev-development --tunnel-through-iap --command "sudo docker exec -i mysql803 mariadb -uroot -proot openemr803 < /tmp/demo-reset.sql"
-gcloud compute ssh openemr-test --zone us-central1-a --project claimrev-development --tunnel-through-iap --command "sudo docker exec -i mysql803 mariadb -uroot -proot openemr803 < /tmp/demo-status.sql"
+gcloud compute ssh openemr-test --zone us-central1-a --project claimrev-development --tunnel-through-iap --command "sudo docker exec -i mysql850 mariadb -uroot -proot openemr850 < /tmp/demo-reset.sql"
+gcloud compute ssh openemr-test --zone us-central1-a --project claimrev-development --tunnel-through-iap --command "sudo docker exec -i mysql850 mariadb -uroot -proot openemr850 < /tmp/demo-status.sql"
 ```
 
 ## Prep (before the audience arrives)

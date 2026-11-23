@@ -44,7 +44,7 @@
 --
 -- USAGE
 --   docker exec -i <mysql-container> mariadb -uroot -p<pw> <db> < demo-reset.sql
---   On the openemr-test VM, oe8:  sudo docker exec -i mysql803 mariadb -uroot -proot openemr803 < demo-reset.sql
+--   On the openemr-test VM, oe8:  sudo docker exec -i mysql850 mariadb -uroot -proot openemr850 < demo-reset.sql
 
 SET @now   := NOW();
 SET @today := CURDATE();
